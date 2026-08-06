@@ -17,11 +17,23 @@ both MIT. See [ATTRIBUTION.md](ATTRIBUTION.md).
 
 Home Assistant add-ons are **not** installed through HACS — HACS handles
 integrations, cards and themes. Add-ons come from an *add-on repository*, which
-is what this repository is:
+is what this repository is.
+
+**The short way** — click the button. Your Home Assistant opens with the
+"add repository" dialog already filled in; press **Add**, then **Close**:
+
+[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ftrelowney%2Fcodexpro)
+
+The button goes through [My Home Assistant](https://my.home-assistant.io/), which
+asks once for the address of your instance and then remembers it. If it does
+nothing or you would rather not use it, add the repository by hand:
 
 1. In Home Assistant go to **Settings → Add-ons → Add-on Store**.
 2. Top-right **⋮ → Repositories**.
 3. Paste `https://github.com/trelowney/codexpro` and press **Add**, then **Close**.
+
+Either way, finish like this:
+
 4. Refresh the page. **Codex Pro** now appears in the store — open it and press
    **Install**.
 5. Press **Start**, then **Open Web UI** (or use the sidebar entry).
