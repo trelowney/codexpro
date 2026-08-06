@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.1.0] - 2026-08-06
+
+Direct access to the Home Assistant API, and an MCP server that can be updated
+like everything else here.
+
+### Added
+
+- `ha-api`: the Home Assistant REST API from the terminal, already
+  authenticated with the add-on's own token — states, services, templates,
+  the error log, and the Supervisor API with `--supervisor`
+- `ha-ws`: the WebSocket API, which is the only way to reach UI dashboards
+  (`lovelace/config`, `lovelace/config/save`) and the area, device and entity
+  registries
+- `mcp-update`: updates `hass-mcp` into persistent storage without waiting for
+  a new add-on release, with `--check` (compares against PyPI and reports how
+  many tools the server offers) and `--reset`. A broken update rolls back to
+  the version built into the image on its own
+- `auto_update_ha_mcp` option, the MCP counterpart of `auto_update_codex`
+- `AGENTS.md` now documents all three routes into Home Assistant — files, MCP
+  tools and the API helpers — with worked examples, so Codex uses the API
+  instead of stopping at "I only have the files"
+
+### Changed
+
+- `hass-mcp-wrapper` prefers an updated copy in `/data` over the built-in one
+- `codex-doctor` reports the `hass-mcp` version in use and where it came from
+
 ## [1.0.0] - 2026-08-06
 
 First release. A combined fork of `kecksdigital/codex-hass` and

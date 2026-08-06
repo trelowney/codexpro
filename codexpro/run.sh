@@ -207,13 +207,42 @@ setup_ha_access() {
     printf '%s' "${SUPERVISOR_TOKEN:-}" > "${token_file}"
     chmod 600 "${token_file}"
 
-    # ha CLI and the MCP wrapper both read this.
+    # ha CLI, the API helpers and the MCP wrapper all read this.
     {
         echo "export SUPERVISOR_TOKEN=\"\$(cat ${token_file})\""
         echo "export HASSIO_TOKEN=\"\$(cat ${token_file})\""
         echo "export HA_URL=\"http://supervisor/core\""
         echo "export HA_TOKEN=\"\$(cat ${token_file})\""
     } >> /etc/profile.d/codexpro.sh
+}
+
+# ---------------------------------------------------------------------------
+# Home Assistant MCP server: updatable, like the CLI itself
+# ---------------------------------------------------------------------------
+setup_ha_mcp_server() {
+    local auto_update persistent_mcp="/data/packages/python/venv/bin/hass-mcp"
+
+    auto_update="$(config_bool 'auto_update_ha_mcp' 'false')"
+
+    if [ "${auto_update}" = "true" ]; then
+        bashio::log.info "auto_update_ha_mcp is on - updating hass-mcp in /data..."
+        if mcp-update >/tmp/mcp-update.log 2>&1; then
+            bashio::log.info "Home Assistant MCP server updated"
+        else
+            bashio::log.warning "MCP server update failed - keeping the version baked into the image."
+            bashio::log.warning "You can retry later from the terminal with:  mcp-update"
+            tail -n 5 /tmp/mcp-update.log 2>/dev/null | while IFS= read -r l; do
+                bashio::log.warning "  ${l}"
+            done
+        fi
+    fi
+
+    # As with the CLI: a persistent copy only wins if it actually runs.
+    if [ -x "${persistent_mcp}" ] && ! timeout 20 "${persistent_mcp}" --help >/dev/null 2>&1; then
+        bashio::log.warning "The hass-mcp copy in /data does not run - using the built-in one instead."
+        bashio::log.warning "To repair it, run in the terminal:  mcp-update --reset"
+        mv "${persistent_mcp}" "${persistent_mcp}.broken" 2>/dev/null || true
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -294,10 +323,52 @@ ha core logs | tail -100   # recent logs
 ha-reload                  # reload config without a full restart
 ```
 
-## Home Assistant MCP
+## Three ways to reach Home Assistant
 
-When the `homeassistant` MCP server is enabled you can query entities and call
-services through it instead of guessing from YAML.
+You have all three. Use whichever fits; they are not alternatives to each other.
+
+1. **The files** in `/config` - for YAML you can read and edit directly.
+2. **The `homeassistant` MCP server** (when enabled) - declared tools for
+   entities, services, history, statistics and UI dashboards. Prefer these when
+   one of them covers the task, they are the least error-prone.
+3. **The API helpers below** - everything the MCP tools do not cover. They are
+   already authenticated; there is no token to look up and no host name to
+   guess.
+
+### `ha-api` - the REST API
+
+```bash
+ha-api GET /api/states                       # every entity and its state
+ha-api GET /api/states/light.kitchen         # one entity
+ha-api GET /api/config                       # version, location, units
+ha-api GET /api/services                     # every callable service
+ha-api GET /api/error_log                    # the error log
+ha-api POST /api/services/light/turn_on '{"entity_id":"light.kitchen"}'
+ha-api POST /api/template '{"template":"{{ states(\"sun.sun\") }}"}'
+ha-api --supervisor GET /addons/self/info    # the Supervisor API
+```
+
+### `ha-ws` - the WebSocket API
+
+For what REST cannot do at all - UI dashboards and the registries:
+
+```bash
+ha-ws lovelace/config '{"url_path": null}'   # read the default dashboard
+ha-ws lovelace/dashboards/list               # list UI dashboards
+ha-ws config/area_registry/list
+ha-ws config/device_registry/list
+ha-ws config/entity_registry/list
+ha-ws lovelace/config/save '{"url_path": null, "config": { ... }}'
+```
+
+`lovelace/config/save` **replaces the whole dashboard**, it does not merge.
+Read the current config, change that object, send all of it back - and save a
+copy of the original first. Editing a dashboard through the API takes effect
+immediately; editing `/config/.storage/lovelace*` by hand does not, because
+Home Assistant keeps it in memory.
+
+Run any of these with `--help` for more. Both print what went wrong and what to
+do about it rather than a bare error.
 AGENTS_EOF
 }
 
@@ -426,6 +497,7 @@ main() {
     setup_config_alias
     setup_ha_access
     setup_codex_cli
+    setup_ha_mcp_server
     setup_codex_config
     setup_tmux
     setup_persistent_packages

@@ -62,9 +62,12 @@ add-on updates.
 | Command | What it does |
 |---|---|
 | `codex-update` | Update the Codex CLI (`--check`, `--reset` also available) |
+| `mcp-update` | Update the Home Assistant connection, `hass-mcp` (`--check`, `--reset`) |
 | `codex-login` | Sign in, switch account or sign out |
 | `codex-doctor` | Self-check: sign-in, file access, API, configuration, disk |
 | `ha-reload` | Validate the configuration and apply it (`--restart` for a full restart) |
+| `ha-api` | Call the Home Assistant REST API, already authenticated |
+| `ha-ws` | Call the WebSocket API — dashboards and registries, which REST cannot reach |
 | `persist-install` | Install extra apk/pip tools that survive restarts |
 
 ## Paths
@@ -91,6 +94,7 @@ Every option is explained in the add-on's Configuration tab. The short version:
 - `enable_ha_mcp` — let Codex query entities and call services, not just files
 - `openai_api_key` — optional, only for API-key billing
 - `auto_update_codex` — update the CLI on every start
+- `auto_update_ha_mcp` — update the Home Assistant connection on every start
 - `tmux_mouse` — mouse in the terminal (breaks browser copy/paste)
 - `persistent_apk_packages`, `persistent_pip_packages` — extra tools to keep
 

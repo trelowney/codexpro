@@ -35,8 +35,13 @@ Three things about the existing Codex add-on made it painful. All three are fixe
 - **Four ways to sign in** — device code (recommended), API key, browser link, or
   copying an existing `auth.json` from another computer. The sign-in is stored in
   `/data` and survives updates.
-- **Home Assistant MCP** — Codex can query entities and call services, not just
-  read files.
+- **Three ways into Home Assistant** — the files, the MCP tools (entities,
+  services, history, UI dashboards), and two ready-authenticated API commands
+  (`ha-api` for REST, `ha-ws` for the WebSocket API that dashboards need).
+  Codex picks whichever fits the question.
+- **The connection updates too** — `mcp-update` fetches the newest `hass-mcp`
+  into persistent storage. New tools land there often; an out-of-date one is
+  the usual reason an add-on "cannot" edit dashboards.
 - **`ha-reload`** — validates the configuration and applies it without a full
   restart (`--restart` when you changed a UI dashboard).
 - **`persist-install`** — extra Alpine and Python packages that survive restarts.

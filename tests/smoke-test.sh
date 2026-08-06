@@ -96,6 +96,10 @@ check "codex-doctor runs"                docker exec "${NAME}" bash -lc "codex-d
 check "persist-install --list"           docker exec "${NAME}" bash -lc "persist-install --list"
 check "ha-reload --help"                 docker exec "${NAME}" ha-reload --help
 check "hass-mcp installed"               docker exec "${NAME}" which hass-mcp
+check "ha-api --help"                    docker exec "${NAME}" ha-api --help
+check "ha-ws --help"                     docker exec "${NAME}" ha-ws --help
+check "mcp-update --check"               docker exec "${NAME}" bash -lc "mcp-update --check"
+check "AGENTS.md documents the API"      docker exec "${NAME}" sh -c "grep -q 'ha-api GET /api/states' /data/codex/AGENTS.md"
 check "no stray pytest shim shadowing test" docker exec "${NAME}" sh -c "! test -e /usr/local/bin/test"
 
 echo

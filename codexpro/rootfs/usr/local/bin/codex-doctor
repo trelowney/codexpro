@@ -86,7 +86,15 @@ fi
 # 6. MCP
 if grep -q 'mcp_servers.homeassistant' "${CODEX_HOME}/config.toml" 2>/dev/null; then
     if command -v hass-mcp >/dev/null 2>&1; then
-        ok "Home Assistant MCP server is configured"
+        mcp_persistent="/data/packages/python/venv/bin/hass-mcp"
+        if [ -x "${mcp_persistent}" ]; then
+            mcp_version="$(/data/packages/python/venv/bin/pip show hass-mcp 2>/dev/null | sed -n 's/^Version: //p')"
+            ok "Home Assistant MCP server is configured (hass-mcp ${mcp_version:-unknown}, updated copy in /data)"
+        else
+            mcp_version="$(pip3 show hass-mcp 2>/dev/null | sed -n 's/^Version: //p')"
+            ok "Home Assistant MCP server is configured (hass-mcp ${mcp_version:-unknown}, built into the add-on)"
+        fi
+        printf '         %s\n' "Newer versions add new abilities - 'mcp-update --check' compares yours with the newest."
     else
         bad "MCP is switched on but hass-mcp is missing." "Set 'enable_ha_mcp: false' in the add-on configuration, or reinstall the add-on."
     fi

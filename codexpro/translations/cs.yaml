@@ -45,6 +45,14 @@ configuration:
       Zapnuto: doplněk si při každém startu stáhne nejnovější Codex CLI - start
       je pomalejší a potřebuje internet. Vypnuto: použije se verze z doplňku a
       aktualizuješ ručně příkazem "codex-update".
+  auto_update_ha_mcp:
+    name: Aktualizovat propojení s Home Assistantem při každém startu
+    description: >-
+      Ta část, díky které Codex umí číst entity, volat služby a upravovat
+      dashboardy (hass-mcp), pravidelně dostává nové schopnosti. Zapnuto: při
+      každém startu se stáhne nejnovější verze - start je pomalejší a potřebuje
+      internet. Vypnuto: použije se verze z doplňku a aktualizuješ ručně
+      příkazem "mcp-update".
   tmux_mouse:
     name: Myš v terminálu
     description: >-

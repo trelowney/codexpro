@@ -99,6 +99,13 @@ show_help() {
     run  ha-reload           to apply YAML changes
     run  ha-reload --restart if you changed a dashboard
 
+  Codex can also talk to Home Assistant directly, not just to the
+  files. Three commands do that, and Codex knows about them:
+    ha-api GET /api/states          the REST API (entities, services)
+    ha-ws  lovelace/dashboards/list the WebSocket API (dashboards)
+    mcp-update --check              is the connection up to date?
+  Each of them prints examples with  --help.
+
   Leaving:
     Close the browser tab whenever you like - nothing is lost.
     Press Ctrl-C to stop Codex and return to this menu.

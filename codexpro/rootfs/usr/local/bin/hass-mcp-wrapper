@@ -15,4 +15,12 @@ HA_TOKEN="$(cat "${TOKEN_FILE}")"
 export HA_TOKEN
 export HA_URL="${HA_URL:-http://supervisor/core}"
 
+# A copy updated with 'mcp-update' lives in persistent storage and wins over the
+# one built into the image, so new tools do not have to wait for an add-on
+# release. 'mcp-update --reset' removes it and this falls back on its own.
+PERSISTENT_MCP="/data/packages/python/venv/bin/hass-mcp"
+if [ -x "${PERSISTENT_MCP}" ]; then
+    exec "${PERSISTENT_MCP}" "$@"
+fi
+
 exec hass-mcp "$@"

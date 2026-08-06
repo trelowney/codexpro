@@ -1,0 +1,165 @@
+#!/bin/bash
+# Talk to the Home Assistant REST API without hunting for a token or a hostname.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+TOKEN_FILE="${CODEXPRO_TOKEN_FILE:-/data/.ha-token}"
+CORE_BASE="${CODEXPRO_CORE_URL:-http://supervisor/core}"
+SUPERVISOR_BASE="${CODEXPRO_SUPERVISOR_URL:-http://supervisor}"
+
+say() { printf '%s\n' "$*"; }
+err() { printf '%s\n' "$*" >&2; }
+
+usage() {
+    cat <<'EOF'
+ha-api - call the Home Assistant REST API (already authenticated)
+
+  ha-api <METHOD> <PATH> [JSON body]
+
+Examples:
+  ha-api GET /api/states                       every entity and its state
+  ha-api GET /api/states/light.kitchen         one entity
+  ha-api GET /api/config                       version, location, unit system
+  ha-api GET /api/services                     every service that can be called
+  ha-api GET /api/error_log                    the full error log
+  ha-api POST /api/services/light/turn_on '{"entity_id":"light.kitchen"}'
+  ha-api POST /api/template '{"template":"{{ states(\"sun.sun\") }}"}'
+  ha-api GET "/api/history/period?filter_entity_id=sensor.temperature"
+
+Options:
+  --supervisor   call the Supervisor API instead of Home Assistant Core
+                 (ha-api --supervisor GET /addons/self/info)
+  --raw          print the response exactly as it arrives, no pretty-printing
+  --status       print the HTTP status code on the first line
+  -h, --help     this help
+
+Notes:
+  * The token is taken from the add-on automatically. Nothing to configure.
+  * A leading /api is added for you if you leave it out.
+  * The REST API cannot read or write UI dashboards - use 'ha-ws' for those.
+EOF
+}
+
+target="core"
+raw="false"
+show_status="false"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -h|--help|help) usage; exit 0 ;;
+        --supervisor)   target="supervisor"; shift ;;
+        --raw)          raw="true"; shift ;;
+        --status)       show_status="true"; shift ;;
+        --) shift; break ;;
+        -*) err "ha-api: unknown option '$1'"; err "Run 'ha-api --help' to see what it accepts."; exit 2 ;;
+        *) break ;;
+    esac
+done
+
+method="${1:-}"
+path="${2:-}"
+body="${3:-}"
+
+if [ -z "${method}" ] || [ -z "${path}" ]; then
+    usage
+    exit 2
+fi
+
+case "${method}" in
+    get|post|put|delete|patch|GET|POST|PUT|DELETE|PATCH) method="$(printf '%s' "${method}" | tr '[:lower:]' '[:upper:]')" ;;
+    *)
+        err "ha-api: '${method}' is not an HTTP method."
+        err "Write the method first, then the path:  ha-api GET /api/states"
+        exit 2
+        ;;
+esac
+
+token="${SUPERVISOR_TOKEN:-}"
+if [ -z "${token}" ] && [ -r "${TOKEN_FILE}" ]; then
+    token="$(cat "${TOKEN_FILE}")"
+fi
+if [ -z "${token}" ]; then
+    err "ha-api: no Home Assistant token available."
+    err "Restart the add-on - the token is created at start-up. If it keeps"
+    err "happening, run 'codex-doctor', it checks this."
+    exit 1
+fi
+
+case "${path}" in
+    /*) ;;
+    *) path="/${path}" ;;
+esac
+
+if [ "${target}" = "core" ]; then
+    case "${path}" in
+        /api/*) ;;
+        *) path="/api${path}" ;;
+    esac
+    url="${CORE_BASE}${path}"
+else
+    url="${SUPERVISOR_BASE}${path}"
+fi
+
+args=(-sS -X "${method}" -H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+if [ -n "${body}" ]; then
+    args+=(-d "${body}")
+fi
+
+response="$(curl "${args[@]}" -w $'\n%{http_code}' "${url}" 2>&1)"
+curl_status=$?
+
+if [ "${curl_status}" -ne 0 ]; then
+    err "ha-api: could not reach ${url}"
+    err "${response}"
+    err "Home Assistant may be restarting - wait a moment and try again."
+    exit 1
+fi
+
+code="${response##*$'\n'}"
+payload="${response%$'\n'*}"
+
+if [ "${show_status}" = "true" ]; then
+    say "HTTP ${code}"
+fi
+
+case "${code}" in
+    2*) ;;
+    401|403)
+        err "ha-api: Home Assistant refused the token (HTTP ${code})."
+        err "Restart the add-on so a fresh token is issued."
+        [ -n "${payload}" ] && err "${payload}"
+        exit 1
+        ;;
+    404)
+        err "ha-api: no such endpoint (HTTP 404): ${path}"
+        err "Check the path against 'ha-api GET /api/' or run 'ha-api --help'."
+        [ -n "${payload}" ] && err "${payload}"
+        exit 1
+        ;;
+    405)
+        err "ha-api: wrong method for this endpoint (HTTP 405)."
+        err "Most read endpoints are GET, service calls are POST."
+        exit 1
+        ;;
+    *)
+        err "ha-api: request failed (HTTP ${code})."
+        [ -n "${payload}" ] && err "${payload}"
+        exit 1
+        ;;
+esac
+
+if [ "${raw}" = "true" ] || [ -z "${payload}" ]; then
+    printf '%s\n' "${payload}"
+    exit 0
+fi
+
+case "${payload}" in
+    \{*|\[*)
+        if printf '%s' "${payload}" | jq . 2>/dev/null; then
+            exit 0
+        fi
+        ;;
+esac
+
+printf '%s\n' "${payload}"

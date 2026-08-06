@@ -1,0 +1,189 @@
+#!/bin/bash
+# Update the Home Assistant MCP server without waiting for a new add-on release.
+#
+# The image ships a version of hass-mcp that was current when the image was
+# built. New tools appear there regularly (the dashboard tools, for example, are
+# newer than some published add-on images), so this installs the newest release
+# into /data - persistent storage - and the MCP wrapper prefers that copy.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+PERSIST_PYTHON="/data/packages/python"
+VENV="${PERSIST_PYTHON}/venv"
+VENV_PIP="${VENV}/bin/pip"
+VENV_MCP="${VENV}/bin/hass-mcp"
+PYPI_URL="https://pypi.org/pypi/hass-mcp/json"
+
+say()  { printf '%s\n' "$*"; }
+line() { printf '%s\n' "----------------------------------------------------------"; }
+
+usage() {
+    cat <<'EOF'
+mcp-update - update the Home Assistant MCP server (hass-mcp)
+
+  mcp-update           install the newest release into persistent storage
+  mcp-update --check   only report which version is installed and available
+  mcp-update --reset   throw the persistent copy away and use the built-in one
+  mcp-update --help    this text
+
+Why this exists:
+  The MCP server is what lets Codex read entities, call services and edit UI
+  dashboards. New tools are added to it often. This updates it without waiting
+  for a new version of the add-on, and the update survives restarts.
+
+After updating, start a new Codex session (menu option 1) - Codex loads MCP
+servers when a session starts, so a session that is already running keeps the
+old one.
+EOF
+}
+
+installed_version() {
+    if [ -x "${VENV_MCP}" ] && [ -x "${VENV_PIP}" ]; then
+        "${VENV_PIP}" show hass-mcp 2>/dev/null | sed -n 's/^Version: //p'
+        return
+    fi
+    pip3 show hass-mcp 2>/dev/null | sed -n 's/^Version: //p'
+}
+
+installed_where() {
+    if [ -x "${VENV_MCP}" ]; then
+        printf '%s' "persistent copy in /data"
+    else
+        printf '%s' "built into the add-on image"
+    fi
+}
+
+latest_version() {
+    curl -fsSL --max-time 20 "${PYPI_URL}" 2>/dev/null | jq -r '.info.version' 2>/dev/null
+}
+
+tool_count() {
+    local binary="$1"
+    {
+        printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"mcp-update","version":"1"}}}'
+        printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+        printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+        sleep 3
+    } | HA_URL="${HA_URL:-http://supervisor/core}" HA_TOKEN="${HA_TOKEN:-probe}" timeout 20 "${binary}" 2>/dev/null \
+      | jq -r 'select(.result.tools) | .result.tools | length' 2>/dev/null | head -1
+}
+
+report() {
+    local current latest where count
+    current="$(installed_version)"
+    where="$(installed_where)"
+    [ -z "${current}" ] && current="not installed"
+    say "Home Assistant MCP server (hass-mcp)"
+    say "  installed: ${current}  (${where})"
+
+    latest="$(latest_version)"
+    if [ -z "${latest}" ] || [ "${latest}" = "null" ]; then
+        say "  newest:    could not ask pypi.org (no internet?)"
+        return 0
+    fi
+    say "  newest:    ${latest}"
+
+    count="$(tool_count "$(command -v hass-mcp)")"
+    [ -n "${count}" ] && say "  tools it offers Codex right now: ${count}"
+
+    if [ "${current}" = "${latest}" ]; then
+        say "You are up to date."
+        return 0
+    fi
+    say "Run 'mcp-update' to install ${latest}."
+    return 0
+}
+
+ensure_venv() {
+    if [ -x "${VENV}/bin/python" ]; then
+        return 0
+    fi
+    say "Setting up persistent Python storage (first time only)..."
+    mkdir -p "${PERSIST_PYTHON}"
+    if python3 -m venv "${VENV}"; then
+        return 0
+    fi
+    line
+    say "Could not create the Python environment in /data."
+    say "What to do:"
+    say "  1. Check free space with 'df -h /data'."
+    say "  2. Try again: mcp-update"
+    say "  3. If it keeps failing, the built-in version keeps working - nothing is broken."
+    line
+    return 1
+}
+
+do_reset() {
+    if [ ! -e "${VENV_MCP}" ]; then
+        say "There is no persistent copy - the add-on is already using its built-in version."
+        return 0
+    fi
+    say "Removing the persistent copy..."
+    "${VENV_PIP}" uninstall -y hass-mcp >/dev/null 2>&1
+    rm -f "${VENV_MCP}"
+    say "Done. The version built into the add-on is used again."
+    say "Start a new Codex session for the change to take effect."
+}
+
+do_update() {
+    local before after count
+    before="$(installed_version)"
+    [ -z "${before}" ] && before="none"
+
+    ensure_venv || return 1
+
+    say "Installing the newest hass-mcp into /data (this takes a moment)..."
+    if ! "${VENV_PIP}" install --upgrade hass-mcp; then
+        line
+        say "The update failed and nothing was changed."
+        say "What to do:"
+        say "  * No internet? Check that Home Assistant itself is online."
+        say "  * Out of space? 'df -h /data'."
+        say "  * The version you had is still installed and still works."
+        line
+        return 1
+    fi
+
+    if [ ! -x "${VENV_MCP}" ]; then
+        line
+        say "The package installed but no 'hass-mcp' program appeared."
+        say "Falling back to the built-in version with 'mcp-update --reset'."
+        line
+        do_reset
+        return 1
+    fi
+
+    after="$("${VENV_PIP}" show hass-mcp 2>/dev/null | sed -n 's/^Version: //p')"
+    count="$(tool_count "${VENV_MCP}")"
+
+    if [ -z "${count}" ]; then
+        line
+        say "The new version does not start correctly, so it was removed again."
+        say "The add-on keeps using its built-in version - nothing is broken."
+        line
+        do_reset
+        return 1
+    fi
+
+    line
+    say "Updated: ${before} -> ${after}"
+    say "It offers Codex ${count} tools."
+    say
+    say "Start a new Codex session (menu option 1) so Codex picks it up -"
+    say "MCP servers are loaded when a session starts."
+    line
+}
+
+case "${1:-}" in
+    -h|--help|help) usage ;;
+    -c|--check|check) report ;;
+    -r|--reset|reset) do_reset ;;
+    "") do_update ;;
+    *)
+        say "mcp-update: '$1' is not something I understand."
+        say
+        usage
+        exit 2
+        ;;
+esac

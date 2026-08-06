@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Call the Home Assistant WebSocket API - the part the REST API cannot reach.
+
+UI dashboards, the area/device/entity registries and a few other things are
+only available over the WebSocket API. This wraps the whole connect-authenticate
+-send-read dance in one command, using the add-on's own token.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+
+USAGE = """ha-ws - call the Home Assistant WebSocket API (already authenticated)
+
+  ha-ws <command type> [JSON parameters]
+
+Dashboards (not reachable over the REST API):
+  ha-ws lovelace/config '{"url_path": null}'         read the default dashboard
+  ha-ws lovelace/config '{"url_path": "my-dash"}'    read a specific dashboard
+  ha-ws lovelace/dashboards/list                     list all UI dashboards
+  ha-ws lovelace/config/save '{"url_path": null, "config": {...}}'
+
+Registries:
+  ha-ws config/area_registry/list
+  ha-ws config/device_registry/list
+  ha-ws config/entity_registry/list
+  ha-ws config/label_registry/list
+
+Other useful commands:
+  ha-ws get_states                     every entity (same as ha-api GET /api/states)
+  ha-ws get_services
+  ha-ws config/automation/config/list
+  ha-ws system_health/info
+
+Options:
+  --timeout <seconds>   give up waiting after this long (default 30)
+  --compact             print the result on one line instead of indented
+  -h, --help            this help
+
+WARNING about lovelace/config/save: it replaces the *entire* dashboard, it does
+not merge. Read the current config first, change what you need in that object,
+and send the whole thing back. Save a copy before you overwrite anything.
+
+If a command is rejected, Home Assistant says why - the message is printed as
+it arrives.
+"""
+
+TOKEN_FILE = os.environ.get("CODEXPRO_TOKEN_FILE", "/data/.ha-token")
+WS_URL = os.environ.get("CODEXPRO_WS_URL", "ws://supervisor/core/api/websocket")
+
+
+def fail(message: str, *extra: str) -> None:
+    print(f"ha-ws: {message}", file=sys.stderr)
+    for line in extra:
+        print(line, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def read_token() -> str:
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token and os.path.isfile(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, encoding="utf-8") as handle:
+                token = handle.read().strip()
+        except OSError as err:
+            fail(f"cannot read {TOKEN_FILE}: {err}")
+    if not token:
+        fail(
+            "no Home Assistant token available.",
+            "Restart the add-on - the token is created at start-up.",
+            "'codex-doctor' checks this too.",
+        )
+    return token
+
+
+async def run(command: str, payload: dict, timeout: float) -> dict:
+    try:
+        from websockets.asyncio.client import connect
+    except ImportError:  # older websockets releases
+        from websockets.client import connect  # type: ignore[no-redef]
+
+    token = read_token()
+
+    async with connect(WS_URL, max_size=None, open_timeout=timeout) as socket:
+        greeting = json.loads(await asyncio.wait_for(socket.recv(), timeout))
+        if greeting.get("type") != "auth_required":
+            fail(f"unexpected greeting from Home Assistant: {greeting!r}")
+
+        await socket.send(json.dumps({"type": "auth", "access_token": token}))
+        auth = json.loads(await asyncio.wait_for(socket.recv(), timeout))
+        if auth.get("type") != "auth_ok":
+            fail(
+                "Home Assistant refused the token.",
+                str(auth.get("message", "")),
+                "Restart the add-on so a fresh token is issued.",
+            )
+
+        message = {"id": 1, "type": command}
+        message.update(payload)
+        await socket.send(json.dumps(message))
+
+        while True:
+            answer = json.loads(await asyncio.wait_for(socket.recv(), timeout))
+            if answer.get("id") == 1 and answer.get("type") == "result":
+                return answer
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    timeout = 30.0
+    compact = False
+
+    while args and args[0].startswith("-"):
+        option = args.pop(0)
+        if option in ("-h", "--help", "help"):
+            print(USAGE)
+            return 0
+        if option == "--compact":
+            compact = True
+            continue
+        if option == "--timeout":
+            if not args:
+                fail("--timeout needs a number of seconds after it.")
+            try:
+                timeout = float(args.pop(0))
+            except ValueError:
+                fail("--timeout needs a number, for example: --timeout 60")
+            continue
+        fail(f"unknown option '{option}'.", "Run 'ha-ws --help' to see what it accepts.")
+
+    if not args:
+        print(USAGE)
+        return 2
+
+    command = args.pop(0)
+    payload: dict = {}
+    if args:
+        try:
+            payload = json.loads(args[0])
+        except json.JSONDecodeError as err:
+            fail(
+                f"the parameters are not valid JSON: {err}",
+                "Wrap them in single quotes, for example:",
+                """  ha-ws lovelace/config '{"url_path": null}'""",
+            )
+        if not isinstance(payload, dict):
+            fail("the parameters must be a JSON object, for example: '{\"url_path\": null}'")
+
+    try:
+        answer = asyncio.run(run(command, payload, timeout))
+    except asyncio.TimeoutError:
+        fail(
+            f"no answer within {timeout:.0f} seconds.",
+            "Home Assistant may be restarting. Try again, or raise --timeout.",
+        )
+    except OSError as err:
+        fail(
+            f"cannot reach Home Assistant: {err}",
+            "Home Assistant may be restarting - wait a moment and try again.",
+        )
+
+    if not answer.get("success", False):
+        error = answer.get("error", {})
+        fail(
+            f"Home Assistant rejected '{command}'.",
+            f"  {error.get('code', 'unknown')}: {error.get('message', '')}",
+            "Check the command name and its parameters with 'ha-ws --help'.",
+        )
+
+    result = answer.get("result")
+    if compact:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

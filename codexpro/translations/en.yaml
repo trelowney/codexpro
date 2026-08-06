@@ -45,6 +45,14 @@ configuration:
       On: the add-on fetches the newest Codex CLI each time it starts, which
       makes starting slower and needs internet. Off: use the version that came
       with the add-on and update by hand with the "codex-update" command.
+  auto_update_ha_mcp:
+    name: Update the Home Assistant connection on every start
+    description: >-
+      The part that lets Codex read entities, call services and edit UI
+      dashboards (hass-mcp) gains new abilities regularly. On: the newest
+      version is fetched at every start, which makes starting slower and needs
+      internet. Off: use the version that came with the add-on and update by
+      hand with the "mcp-update" command.
   tmux_mouse:
     name: Mouse support in the terminal
     description: >-

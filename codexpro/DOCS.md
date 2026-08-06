@@ -39,13 +39,40 @@ broken.
 
 ## Keeping Codex up to date
 
-Two separate things:
+Three separate things:
 
 - **The add-on** updates through Settings → Add-ons, like any other add-on.
 - **The Codex CLI** inside it updates with `codex-update` in the terminal, or
   automatically on every start if you switch on `auto_update_codex`.
+- **The Home Assistant connection** (`hass-mcp` — this is what lets Codex read
+  entities, call services and edit UI dashboards) updates with `mcp-update`, or
+  automatically with `auto_update_ha_mcp`. It gains new abilities often, and an
+  out-of-date one is the usual reason Codex "cannot" do something with
+  dashboards. `mcp-update --check` tells you where you stand.
 
-Updates are stored in `/data` and survive restarts.
+Updates are stored in `/data` and survive restarts. If an update ever installs
+something broken, both commands detect it, roll back to the version built into
+the add-on, and tell you — the add-on does not end up unusable.
+
+## Talking to Home Assistant, not just to its files
+
+Codex has three ways in, and it picks whichever fits:
+
+1. the files in `/config`,
+2. the MCP tools (entities, services, history, dashboards),
+3. two API commands, already authenticated — no token to set up:
+
+```bash
+ha-api GET /api/states                    # every entity and its state
+ha-api POST /api/services/light/turn_on '{"entity_id":"light.kitchen"}'
+ha-api --supervisor GET /addons/self/info # the Supervisor API
+ha-ws lovelace/dashboards/list            # UI dashboards (REST cannot do these)
+ha-ws config/area_registry/list
+```
+
+Both print examples with `--help`. You will not normally type them yourself —
+they exist so Codex can reach everything the API exposes when no MCP tool
+covers what you asked for.
 
 ## Options
 
@@ -58,6 +85,7 @@ Updates are stored in `/data` and survive restarts.
 | `enable_ha_mcp` | Let Codex query entities and call services |
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |
 | `auto_update_codex` | Fetch the newest Codex CLI on every start |
+| `auto_update_ha_mcp` | Fetch the newest Home Assistant connection (hass-mcp) on every start |
 | `tmux_mouse` | Mouse in the terminal; breaks browser copy/paste |
 | `persistent_apk_packages` | Alpine packages reinstalled after every restart |
 | `persistent_pip_packages` | Python packages reinstalled after every restart |
@@ -87,6 +115,7 @@ space, and each failed check says what to do about it.
 | Symptom | Do this |
 |---|---|
 | "not signed in" | `codex-login`, option 1 |
+| Codex says it cannot edit a UI dashboard | `mcp-update`, then start a new session — the dashboard tools are newer than some releases |
 | Codex will not write a file | Set `file_access: full` and restart the add-on |
 | A command disappeared after a restart | Install it with `persist-install`, or add it to `persistent_apk_packages` |
 | Terminal shows nothing | Restart the add-on; the session is recreated on the next connection |
