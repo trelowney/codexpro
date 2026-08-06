@@ -1,0 +1,89 @@
+---
+name: "Codex Pro"
+description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
+version: "1.0.0"
+slug: "codexpro"
+url: "https://github.com/{{OWNER}}/codexpro"
+image: "ghcr.io/{{OWNER}}/codexpro"
+
+arch:
+  - amd64
+  - aarch64
+
+init: false
+startup: services
+boot: auto
+
+# Web interface (image paste + embedded terminal). The terminal itself runs on
+# 7681 and is proxied by the web interface, so ingress only needs one port.
+ingress: true
+ingress_port: 7680
+panel_icon: mdi:robot-industrial
+panel_title: "Codex Pro"
+panel_admin: true
+
+ports:
+  7680/tcp: null
+  7681/tcp: null
+ports_description:
+  7680/tcp: "Web interface (optional - the sidebar panel works without it)"
+  7681/tcp: "Terminal (optional - only needed for direct access)"
+
+# Folder access, in the dict form current Supervisor documents. /config is
+# created inside the container as a shortcut to /homeassistant so both path
+# styles work. all_addon_configs is mounted at /addon_configs.
+# The mount points are pinned explicitly so they are identical on every
+# Supervisor version instead of depending on that version's defaults.
+map:
+  - type: homeassistant_config
+    read_only: false
+    path: /homeassistant
+  - type: all_addon_configs
+    read_only: false
+    path: /addon_configs
+  - type: share
+    read_only: false
+    path: /share
+  - type: media
+    read_only: false
+    path: /media
+  - type: ssl
+    read_only: true
+    path: /ssl
+  - type: backup
+    read_only: true
+    path: /backup
+
+homeassistant_api: true
+hassio_api: true
+hassio_role: manager
+auth_api: true
+
+options:
+  auto_launch_codex: true
+  model: ""
+  approval_policy: "on-request"
+  file_access: "workspace"
+  enable_ha_mcp: true
+  openai_api_key: ""
+  auto_update_codex: false
+  tmux_mouse: false
+  persistent_apk_packages: []
+  persistent_pip_packages: []
+
+schema:
+  auto_launch_codex: bool?
+  model: str?
+  approval_policy: list(untrusted|on-failure|on-request|never)?
+  file_access: list(workspace|full)?
+  enable_ha_mcp: bool?
+  openai_api_key: password?
+  auto_update_codex: bool?
+  tmux_mouse: bool?
+  persistent_apk_packages:
+    - str?
+  persistent_pip_packages:
+    - str?
+
+environment:
+  TERM: xterm-256color

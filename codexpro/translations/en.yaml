@@ -1,0 +1,67 @@
+---
+configuration:
+  auto_launch_codex:
+    name: Start Codex automatically
+    description: >-
+      On: opening the panel drops you straight into Codex. Off: you get a menu
+      first (new session, continue last session, sign in, update, plain shell).
+      You can always get to the menu with Ctrl-C.
+  model:
+    name: Model
+    description: >-
+      Leave empty to use whatever Codex picks by default. Fill in a model name
+      (for example gpt-5.4) only if you know you want that specific one. A wrong
+      name makes Codex refuse to start a conversation.
+  approval_policy:
+    name: When should Codex ask before doing something
+    description: >-
+      on-request = Codex asks before risky steps (recommended).
+      untrusted = asks about anything it does not consider safe.
+      on-failure = only asks after a command failed.
+      never = never asks, does everything on its own. Use "never" only if you
+      have backups and you know what you are doing.
+  file_access:
+    name: Which files Codex may change
+    description: >-
+      workspace = your Home Assistant configuration, other add-on configs, share
+      and media (recommended - this is already everything you normally need).
+      full = no restrictions at all inside the container. Choose "full" only if
+      something legitimate is being blocked.
+  enable_ha_mcp:
+    name: Let Codex talk to Home Assistant directly
+    description: >-
+      On: Codex can look up your entities and call services, not just read YAML
+      files. Off: Codex only works with files. Turn it off if the add-on log
+      shows errors mentioning MCP.
+  openai_api_key:
+    name: OpenAI API key (optional)
+    description: >-
+      Only needed if you want to pay per use with an API key instead of signing
+      in with a ChatGPT account. Leave empty and sign in from the terminal
+      (option 4 in the menu) if you have ChatGPT Plus, Pro or Business.
+  auto_update_codex:
+    name: Update Codex on every start
+    description: >-
+      On: the add-on fetches the newest Codex CLI each time it starts, which
+      makes starting slower and needs internet. Off: use the version that came
+      with the add-on and update by hand with the "codex-update" command.
+  tmux_mouse:
+    name: Mouse support in the terminal
+    description: >-
+      On: you can scroll and click in the terminal with the mouse, but browser
+      copy and paste stops working the usual way. Off (recommended): normal
+      copy and paste.
+  persistent_apk_packages:
+    name: Extra programs to keep installed
+    description: >-
+      Alpine Linux package names, one per line (for example htop, rsync). They
+      are reinstalled automatically after every restart and update. Find names
+      at pkgs.alpinelinux.org.
+  persistent_pip_packages:
+    name: Extra Python packages to keep installed
+    description: >-
+      Python package names, one per line (for example requests, pandas). They
+      are reinstalled automatically after every restart and update.
+network:
+  7680/tcp: Web interface (not needed when you use the sidebar panel)
+  7681/tcp: Terminal (not needed when you use the sidebar panel)

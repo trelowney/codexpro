@@ -1,0 +1,18 @@
+#!/bin/bash
+# Starts the Home Assistant MCP server for Codex with the Supervisor token.
+# Everything in this add-on runs as root, so no sudo/setuid dance is needed.
+set -euo pipefail
+
+TOKEN_FILE="${CODEXPRO_TOKEN_FILE:-/data/.ha-token}"
+
+if [ ! -r "${TOKEN_FILE}" ]; then
+    echo "[codexpro] Home Assistant token file not found: ${TOKEN_FILE}" >&2
+    echo "[codexpro] Restart the add-on; if it keeps happening set enable_ha_mcp: false." >&2
+    exit 1
+fi
+
+HA_TOKEN="$(cat "${TOKEN_FILE}")"
+export HA_TOKEN
+export HA_URL="${HA_URL:-http://supervisor/core}"
+
+exec hass-mcp "$@"

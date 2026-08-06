@@ -1,0 +1,14 @@
+#!/bin/bash
+# Every browser connection lands here. It never starts Codex directly - it only
+# attaches to the long-lived tmux session, which is what makes a reload, a
+# dropped ingress connection or a Home Assistant Core restart harmless.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+SESSION="codex"
+
+if tmux has-session -t "${SESSION}" 2>/dev/null; then
+    exec tmux attach-session -t "${SESSION}"
+fi
+
+# The session is gone (add-on restart / update / host reboot). Start a new one.
+exec tmux new-session -s "${SESSION}" -c /homeassistant /usr/local/bin/codex-menu

@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""Merge the add-on's managed defaults into the user's Codex config.toml.
+
+Rules:
+  * preferences (model, approval_policy, sandbox_mode) are seeded from the
+    add-on options on the first run and whenever the option itself changes.
+    In between, what the user picked inside Codex wins - the state is on a
+    persistent volume, so it must not be reset on every start.
+  * plumbing (writable roots, trust for /homeassistant, the Home Assistant MCP
+    server) is enforced on every start: it is what makes the add-on work at all
+  * everything else in config.toml belongs to the user and is never touched
+  * an empty option means "no opinion": a value the user wrote by hand stays,
+    a value this add-on wrote earlier is removed
+  * repair a config.toml that a Codex version left in a state a newer Codex
+    refuses to parse, keeping a backup next to it
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover
+    print("python3 with tomllib (3.11+) is required", file=sys.stderr)
+    sys.exit(1)
+
+BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+INVALID_PROJECT_TABLE_RE = re.compile(r"^\[projects\.(\/[^\]]+)\]$")
+
+MCP_COMMAND = "/usr/local/bin/hass-mcp-wrapper"
+WRITABLE_ROOTS = ["/homeassistant", "/addon_configs", "/share", "/media", "/data"]
+SANDBOX_MODES = {"workspace": "workspace-write", "full": "danger-full-access"}
+APPROVAL_POLICIES = {"untrusted", "on-failure", "on-request", "never"}
+
+
+# --------------------------------------------------------------------------
+# TOML rendering (tomllib only reads; writing by hand keeps the file readable)
+# --------------------------------------------------------------------------
+def format_key(key):
+    key = str(key)
+    return key if BARE_KEY_RE.fullmatch(key) else json.dumps(key)
+
+
+def format_inline(value):
+    if isinstance(value, dict):
+        items = ", ".join(f"{format_key(k)} = {format_inline(v)}" for k, v in value.items())
+        return "{ " + items + " }"
+    return format_scalar(value)
+
+
+def format_scalar(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(format_inline(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return format_inline(value)
+    raise TypeError(f"unsupported TOML value: {type(value)!r}")
+
+
+def emit_table(lines, table_path, mapping):
+    scalars, tables = [], []
+    for key, value in mapping.items():
+        (tables if isinstance(value, dict) else scalars).append((key, value))
+
+    if table_path:
+        lines.append("[" + ".".join(format_key(p) for p in table_path) + "]")
+    for key, value in scalars:
+        lines.append(f"{format_key(key)} = {format_scalar(value)}")
+    if tables and (scalars or table_path):
+        lines.append("")
+
+    for index, (key, value) in enumerate(tables):
+        emit_table(lines, [*table_path, key], value)
+        if index != len(tables) - 1:
+            lines.append("")
+
+
+# --------------------------------------------------------------------------
+# Loading / repairing
+# --------------------------------------------------------------------------
+def backup(path, suffix):
+    shutil.copy2(path, path.with_suffix(path.suffix + suffix))
+
+
+def repair_invalid_project_tables(text):
+    out, changed = [], False
+    for line in text.splitlines():
+        match = INVALID_PROJECT_TABLE_RE.match(line.strip())
+        if match:
+            out.append(f"[projects.{json.dumps(match.group(1))}]")
+            changed = True
+        else:
+            out.append(line)
+    return "\n".join(out) + "\n" if changed else None
+
+
+def load_config(path):
+    if not path.exists():
+        return {}
+    try:
+        with path.open("rb") as handle:
+            loaded = tomllib.load(handle)
+    except tomllib.TOMLDecodeError:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        repaired = repair_invalid_project_tables(text)
+        if repaired is not None:
+            try:
+                loaded = tomllib.loads(repaired)
+                backup(path, ".invalid.bak")
+                return loaded if isinstance(loaded, dict) else {}
+            except tomllib.TOMLDecodeError:
+                pass
+        backup(path, ".invalid.bak")
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def is_u32(value):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 4294967295
+
+
+def repair_incompatible_values(config):
+    """Drop values older Codex builds wrote that newer ones reject."""
+    repaired = []
+    tui = config.get("tui")
+    if isinstance(tui, dict):
+        if "model_availability_nux" in tui and not is_u32(tui["model_availability_nux"]):
+            tui.pop("model_availability_nux", None)
+            repaired.append("tui.model_availability_nux")
+        if not tui:
+            config.pop("tui", None)
+    return repaired
+
+
+# --------------------------------------------------------------------------
+# Managed-key merging
+# --------------------------------------------------------------------------
+def apply_managed(config, meta, key, value):
+    """Seed a key from the add-on options without fighting the user.
+
+    The add-on state lives on a persistent volume, so whatever the user picks
+    inside Codex (``/model``, approval mode) is remembered by Codex itself.
+    Re-applying the add-on option on every start would silently undo that after
+    each restart, which is exactly the behaviour this add-on set out to remove.
+
+    So the option is applied when it actually means something new:
+      * the key is not in config.toml yet (first run), or
+      * the option's value changed since the add-on last wrote it
+        (the user turned a knob in Home Assistant and expects it to do something)
+    Otherwise the value already in config.toml wins.
+
+    An empty option means "no opinion": a value the add-on wrote earlier is
+    withdrawn, a value the user wrote themselves stays.
+    """
+    tracker = f"managed_{key}"
+    if value is None:
+        if tracker in meta:
+            if config.get(key) == meta[tracker]:
+                config.pop(key, None)
+            meta.pop(tracker, None)
+        return
+    if key not in config or meta.get(tracker) != value:
+        config[key] = value
+    meta[tracker] = value
+
+
+def main():
+    parser = argparse.ArgumentParser(description="merge managed Codex defaults")
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--model", default="")
+    parser.add_argument("--approval-policy", default="on-request")
+    parser.add_argument("--file-access", default="workspace", choices=sorted(SANDBOX_MODES))
+    parser.add_argument("--enable-mcp", default="true")
+    args = parser.parse_args()
+
+    path = Path(args.config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = load_config(path)
+    if repair_incompatible_values(config) and path.exists():
+        backup(path, ".repaired.bak")
+
+    meta = config.setdefault("__codexpro", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        config["__codexpro"] = meta
+
+    apply_managed(config, meta, "model", args.model or None)
+
+    policy = args.approval_policy if args.approval_policy in APPROVAL_POLICIES else "on-request"
+    apply_managed(config, meta, "approval_policy", policy)
+
+    sandbox_mode = SANDBOX_MODES[args.file_access]
+    apply_managed(config, meta, "sandbox_mode", sandbox_mode)
+
+    # Everything the add-on maps must be writable, otherwise Codex can read the
+    # Home Assistant configuration but not change it - the main complaint this
+    # add-on exists to fix.
+    workspace = config.setdefault("sandbox_workspace_write", {})
+    if not isinstance(workspace, dict):
+        workspace = {}
+        config["sandbox_workspace_write"] = workspace
+    roots = [r for r in WRITABLE_ROOTS if os.path.isdir(r)]
+    existing_roots = workspace.get("writable_roots")
+    if isinstance(existing_roots, list):
+        for root in existing_roots:
+            if root not in roots:
+                roots.append(root)
+    workspace["writable_roots"] = roots
+    workspace.setdefault("network_access", True)
+
+    # Pre-trust the Home Assistant folder so nobody is stopped by a trust prompt
+    # they have no way to understand.
+    projects = config.setdefault("projects", {})
+    if isinstance(projects, dict):
+        for project_path in ("/homeassistant",):
+            entry = projects.setdefault(project_path, {})
+            if isinstance(entry, dict):
+                entry.setdefault("trust_level", "trusted")
+
+    mcp_servers = config.setdefault("mcp_servers", {})
+    if not isinstance(mcp_servers, dict):
+        mcp_servers = {}
+        config["mcp_servers"] = mcp_servers
+
+    existing = mcp_servers.get("homeassistant")
+    existing = existing if isinstance(existing, dict) else {}
+
+    if args.enable_mcp.lower() == "true":
+        restored = meta.pop("managed_homeassistant_mcp_backup", {})
+        merged = dict(restored if isinstance(restored, dict) else {})
+        merged.update(existing)
+        merged["command"] = MCP_COMMAND
+        mcp_servers["homeassistant"] = merged
+        meta["managed_homeassistant_mcp"] = True
+    else:
+        if existing:
+            meta["managed_homeassistant_mcp_backup"] = dict(existing)
+        mcp_servers.pop("homeassistant", None)
+        meta.pop("managed_homeassistant_mcp", None)
+
+    if not mcp_servers:
+        config.pop("mcp_servers", None)
+    if not meta:
+        config.pop("__codexpro", None)
+
+    lines = [
+        "# Codex configuration",
+        "#",
+        "# These keys follow the add-on's Configuration tab in Home Assistant and are",
+        "# rewritten on every start, so change them there, not here:",
+        "#   model, approval_policy, sandbox_mode, sandbox_workspace_write,",
+        "#   projects./homeassistant, mcp_servers.homeassistant",
+        "# Everything else in this file is yours and is never touched.",
+        "# Per-project settings belong in /homeassistant/.codex/config.toml.",
+        "",
+    ]
+    emit_table(lines, [], config)
+    rendered = "\n".join(lines).rstrip() + "\n"
+
+    handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", text=True)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            handle.write(rendered)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+    os.chmod(path, 0o600)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

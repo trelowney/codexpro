@@ -1,0 +1,4 @@
+---
+name: "Codex Pro add-on repository"
+url: "https://github.com/{{OWNER}}/codexpro"
+maintainer: "{{OWNER}}"

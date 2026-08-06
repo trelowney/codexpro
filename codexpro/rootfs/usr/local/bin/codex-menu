@@ -1,0 +1,201 @@
+#!/bin/bash
+# The screen a user lands on. It assumes the person in front of it has never
+# seen this add-on before: every option says what it does, every failure says
+# what to do next, and there is always a way back here.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+WORKDIR="/homeassistant"
+cd "${WORKDIR}" 2>/dev/null || cd /
+
+C_TITLE=$'\033[1;36m'
+C_DIM=$'\033[2m'
+C_WARN=$'\033[1;33m'
+C_OK=$'\033[1;32m'
+C_OFF=$'\033[0m'
+
+is_signed_in() {
+    [ -s "${CODEX_HOME:-/data/codex}/auth.json" ] || [ -n "${OPENAI_API_KEY:-}" ]
+}
+
+pause() {
+    printf '\n%s' "Press Enter to go back to the menu... "
+    read -r _ || true
+}
+
+codex_flags() {
+    # Nothing here overrides config.toml; the add-on options already wrote it.
+    printf '%s' ""
+}
+
+run_codex() {
+    # $@ = extra codex arguments
+    if ! command -v codex >/dev/null 2>&1; then
+        echo
+        echo "${C_WARN}Codex is not installed in this container.${C_OFF}"
+        echo "What to do: choose '5' in the menu (Update Codex). If that fails too,"
+        echo "restart the add-on in Settings > Add-ons > Codex Pro > Restart."
+        pause
+        return 1
+    fi
+
+    codex "$@"
+    local status=$?
+
+    if [ ${status} -ne 0 ]; then
+        echo
+        echo "${C_WARN}Codex stopped with an error (exit code ${status}).${C_OFF}"
+        echo "What to do:"
+        echo "  * If it says you are not signed in  -> choose '4' in the menu."
+        echo "  * If it complains about the model -> clear the 'model' option in the"
+        echo "    add-on Configuration tab (empty = whatever Codex uses by default)"
+        echo "    and restart the add-on."
+        echo "  * If it mentions a sandbox or seccomp problem -> set 'file_access: full'"
+        echo "    in the add-on configuration and restart the add-on."
+        echo "  * Anything else -> choose '9' in the menu to run the self-check."
+        pause
+    fi
+    return ${status}
+}
+
+header() {
+    clear
+    echo "${C_TITLE}  Codex Pro for Home Assistant${C_OFF}"
+    echo "${C_DIM}  ------------------------------------------------------------${C_OFF}"
+    if is_signed_in; then
+        echo "  Account:  ${C_OK}signed in${C_OFF}"
+    else
+        echo "  Account:  ${C_WARN}not signed in yet - choose 4 below${C_OFF}"
+    fi
+    echo "  Codex:    $(codex --version 2>/dev/null || echo 'not available')"
+    echo "  Folder:   ${WORKDIR}  (same as /config in the Home Assistant docs)"
+    echo "${C_DIM}  This session keeps running when you close the browser tab or"
+    echo "  restart Home Assistant. Come back any time and continue.${C_OFF}"
+    echo
+}
+
+show_help() {
+    clear
+    cat <<'EOF'
+  What is this?
+  ------------------------------------------------------------
+  A terminal running OpenAI Codex, with access to your Home
+  Assistant files. You type what you want in plain language,
+  Codex reads and edits the files for you.
+
+  Things you can ask it:
+    "add an automation that turns the porch light on at sunset"
+    "why does my heating automation not trigger? look at the logs"
+    "create a new dashboard view with all temperature sensors"
+
+  Where your files are:
+    /config  and  /homeassistant   -> the same Home Assistant folder
+    /addon_configs                 -> configuration of other add-ons
+    /share, /media                 -> shared folders
+    /ssl, /backup                  -> read-only
+
+  After Codex changes something:
+    run  ha-reload           to apply YAML changes
+    run  ha-reload --restart if you changed a dashboard
+
+  Leaving:
+    Close the browser tab whenever you like - nothing is lost.
+    Press Ctrl-C to stop Codex and return to this menu.
+EOF
+    pause
+}
+
+first_run_hint() {
+    is_signed_in && return 0
+    clear
+    cat <<EOF
+  ${C_TITLE}Welcome to Codex Pro${C_OFF}
+
+  You need to sign in once before Codex can do anything. It takes a
+  minute and you only do it once - the sign-in is stored and survives
+  restarts and updates of this add-on.
+
+  Press Enter to start the sign-in, or type 'skip' to see the menu first.
+EOF
+    printf '\n  > '
+    read -r answer || answer=""
+    case "${answer}" in
+        skip|s|S) return 0 ;;
+        *) codex-login ;;
+    esac
+}
+
+# Auto-launch straight into Codex on the very first attach, but only when the
+# user is actually signed in - otherwise they would land in an error screen.
+if [ "${CODEXPRO_AUTO_LAUNCH:-true}" = "true" ] && is_signed_in; then
+    clear
+    echo "${C_TITLE}Starting Codex...${C_OFF}"
+    echo "${C_DIM}Press Ctrl-C to stop it and get the menu.${C_OFF}"
+    sleep 1
+    run_codex
+else
+    first_run_hint
+fi
+
+while true; do
+    header
+    cat <<EOF
+    1) Start a new Codex session
+    2) Continue where I left off (last session)
+    3) Pick one of my earlier sessions
+    4) Sign in / switch account
+    5) Update Codex to the newest version
+    6) Apply my Home Assistant changes (check + reload)
+    7) Plain shell (for people who know their way around)
+    8) What can I do here?
+    9) Self-check (run this if something behaves oddly)
+EOF
+    printf '\n  Type a number and press Enter: '
+    read -r choice || choice=""
+
+    case "${choice}" in
+        1) clear; run_codex ;;
+        2)
+            clear
+            if codex resume --help >/dev/null 2>&1; then
+                run_codex resume --last
+            else
+                echo "${C_WARN}This version of Codex cannot resume sessions.${C_OFF}"
+                echo "What to do: choose '5' to update Codex, then try again."
+                pause
+            fi
+            ;;
+        3)
+            clear
+            if codex resume --help >/dev/null 2>&1; then
+                echo "Pick a session from the list; press Esc to come back."
+                sleep 1
+                run_codex resume
+            else
+                echo "${C_WARN}This version of Codex cannot resume sessions.${C_OFF}"
+                echo "What to do: choose '5' to update Codex, then try again."
+                pause
+            fi
+            ;;
+        4) clear; codex-login; pause ;;
+        5) clear; codex-update; pause ;;
+        6) clear; ha-reload; pause ;;
+        7)
+            clear
+            echo "You are in a normal shell. Type 'exit' to come back to this menu."
+            echo
+            bash -l
+            ;;
+        8) show_help ;;
+        9) clear; codex-doctor; pause ;;
+        "")
+            ;;
+        *)
+            echo
+            echo "  ${C_WARN}'${choice}' is not one of the options.${C_OFF}"
+            echo "  Type one of the numbers shown above (for example 1) and press Enter."
+            sleep 2
+            ;;
+    esac
+done

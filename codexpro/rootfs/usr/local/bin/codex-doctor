@@ -1,0 +1,118 @@
+#!/bin/bash
+# One command that answers "why is it not working?" in plain language.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+CODEX_HOME="${CODEX_HOME:-/data/codex}"
+
+C_TITLE=$'\033[1;36m'
+C_OK=$'\033[1;32m'
+C_BAD=$'\033[1;31m'
+C_WARN=$'\033[1;33m'
+C_OFF=$'\033[0m'
+
+problems=0
+
+ok()   { printf '  %s[ ok ]%s %s\n' "${C_OK}" "${C_OFF}" "$1"; }
+bad()  { printf '  %s[FAIL]%s %s\n' "${C_BAD}" "${C_OFF}" "$1"; printf '         %s\n' "$2"; problems=$((problems+1)); }
+warn() { printf '  %s[warn]%s %s\n' "${C_WARN}" "${C_OFF}" "$1"; printf '         %s\n' "$2"; }
+
+echo "${C_TITLE}Codex Pro self-check${C_OFF}"
+echo
+
+# 1. Codex binary
+if command -v codex >/dev/null 2>&1 && codex --version >/dev/null 2>&1; then
+    ok "Codex runs: $(codex --version 2>/dev/null) ($(command -v codex))"
+else
+    bad "Codex does not run." "Run 'codex-update', and if that fails 'codex-update --reset', then restart the add-on."
+fi
+
+# 2. Sign-in
+if [ -s "${CODEX_HOME}/auth.json" ]; then
+    ok "Signed in (${CODEX_HOME}/auth.json)"
+elif [ -n "${OPENAI_API_KEY:-}" ]; then
+    ok "Using the API key from the add-on configuration"
+else
+    bad "Not signed in." "Run 'codex-login' and pick option 1 (device code)."
+fi
+
+# 3. Home Assistant files
+if [ -d /homeassistant ]; then
+    if touch /homeassistant/.codexpro-write-test 2>/dev/null; then
+        rm -f /homeassistant/.codexpro-write-test
+        ok "Home Assistant config folder is writable (/homeassistant, also as /config)"
+    else
+        bad "Cannot write into /homeassistant." "Check that the add-on option 'file_access' is not read-only and restart the add-on."
+    fi
+else
+    bad "/homeassistant is missing." "Reinstall the add-on - the folder mapping did not happen."
+fi
+
+if [ -L /config ]; then
+    ok "/config points at $(readlink /config)"
+else
+    warn "/config is not the usual shortcut." "Use /homeassistant in your instructions to Codex."
+fi
+
+for extra in /addon_configs /share /media; do
+    if [ -d "${extra}" ]; then
+        ok "${extra} is available"
+    else
+        warn "${extra} is not mapped." "Only matters if you want Codex to touch it."
+    fi
+done
+
+# 4. Supervisor API
+if curl -sf -H "Authorization: Bearer ${SUPERVISOR_TOKEN:-}" http://supervisor/core/info >/dev/null 2>&1; then
+    ok "Home Assistant API reachable ('ha' commands work)"
+else
+    bad "Home Assistant API is not answering." "Restart the add-on. If it persists, check that the add-on still has 'Home Assistant API' access in its Configuration tab."
+fi
+
+# 5. Codex configuration
+if [ -f "${CODEX_HOME}/config.toml" ]; then
+    if python3 -c "import tomllib,sys;tomllib.load(open(sys.argv[1],'rb'))" "${CODEX_HOME}/config.toml" 2>/dev/null; then
+        ok "Codex configuration file is valid"
+        sandbox="$(grep -E '^sandbox_mode' "${CODEX_HOME}/config.toml" | head -n1 | cut -d'"' -f2)"
+        [ -n "${sandbox}" ] && ok "File access mode: ${sandbox}"
+    else
+        bad "${CODEX_HOME}/config.toml is damaged." "Restart the add-on - it rewrites the file and keeps a backup next to it."
+    fi
+else
+    warn "No Codex configuration file yet." "It is written when the add-on starts; restart the add-on if Codex misbehaves."
+fi
+
+# 6. MCP
+if grep -q 'mcp_servers.homeassistant' "${CODEX_HOME}/config.toml" 2>/dev/null; then
+    if command -v hass-mcp >/dev/null 2>&1; then
+        ok "Home Assistant MCP server is configured"
+    else
+        bad "MCP is switched on but hass-mcp is missing." "Set 'enable_ha_mcp: false' in the add-on configuration, or reinstall the add-on."
+    fi
+else
+    ok "Home Assistant MCP server is off (that is fine, file access still works)"
+fi
+
+# 7. Session persistence
+if tmux has-session -t codex 2>/dev/null; then
+    ok "Persistent session 'codex' is alive - closing the browser will not lose it"
+else
+    warn "No persistent session found." "It is created on the next connection; nothing to do."
+fi
+
+# 8. Disk
+avail="$(df -Pm /data 2>/dev/null | awk 'NR==2 {print $4}')"
+if [ -n "${avail}" ] && [ "${avail}" -lt 200 ]; then
+    bad "Only ${avail} MB free in /data." "Free some space on the Home Assistant host, otherwise updates and sessions will fail."
+else
+    ok "Free space in /data: ${avail:-unknown} MB"
+fi
+
+echo
+if [ "${problems}" -eq 0 ]; then
+    echo "${C_OK}Everything that matters looks fine.${C_OFF}"
+else
+    echo "${C_BAD}${problems} problem(s) found.${C_OFF} Each one above says what to do."
+    echo "If you are stuck, copy this whole output into the add-on's GitHub issue."
+fi

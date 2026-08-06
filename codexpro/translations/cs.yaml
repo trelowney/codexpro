@@ -1,0 +1,66 @@
+---
+configuration:
+  auto_launch_codex:
+    name: Spustit Codex rovnou
+    description: >-
+      Zapnuto: po otevření panelu jsi hned v Codexu. Vypnuto: nejdřív se ukáže
+      nabídka (nová session, navázat na poslední, přihlášení, aktualizace,
+      obyčejný shell). Do nabídky se vždycky dostaneš přes Ctrl-C.
+  model:
+    name: Model
+    description: >-
+      Nech prázdné a použije se výchozí model Codexu. Název (třeba gpt-5.4)
+      vyplň jen když víš, že chceš konkrétní model - špatný název způsobí, že
+      Codex odmítne odpovídat.
+  approval_policy:
+    name: Kdy se má Codex ptát na svolení
+    description: >-
+      on-request = zeptá se před riskantním krokem (doporučeno).
+      untrusted = ptá se na všechno, co nepovažuje za bezpečné.
+      on-failure = zeptá se až když příkaz selže.
+      never = neptá se nikdy a dělá všechno sám. "never" volej jen když máš
+      zálohy a víš, co děláš.
+  file_access:
+    name: Do kterých souborů smí Codex zapisovat
+    description: >-
+      workspace = konfigurace Home Assistantu, konfigurace ostatních doplňků,
+      share a media (doporučeno - v praxi to stačí na všechno).
+      full = uvnitř kontejneru bez omezení. Vol jen když ti něco smysluplného
+      brání v práci.
+  enable_ha_mcp:
+    name: Nechat Codex mluvit přímo s Home Assistantem
+    description: >-
+      Zapnuto: Codex si umí vypsat entity a volat služby, nejen číst YAML.
+      Vypnuto: pracuje jen se soubory. Vypni, když se v logu doplňku objevují
+      chyby s "MCP".
+  openai_api_key:
+    name: OpenAI API klíč (nepovinné)
+    description: >-
+      Potřebuješ jen když chceš platit podle spotřeby přes API klíč. Když máš
+      ChatGPT Plus, Pro nebo Business, nech prázdné a přihlas se z terminálu
+      (volba 4 v nabídce).
+  auto_update_codex:
+    name: Aktualizovat Codex při každém startu
+    description: >-
+      Zapnuto: doplněk si při každém startu stáhne nejnovější Codex CLI - start
+      je pomalejší a potřebuje internet. Vypnuto: použije se verze z doplňku a
+      aktualizuješ ručně příkazem "codex-update".
+  tmux_mouse:
+    name: Myš v terminálu
+    description: >-
+      Zapnuto: v terminálu funguje rolování a klikání myší, ale rozbije se
+      běžné kopírování v prohlížeči. Vypnuto (doporučeno): normální kopírování.
+  persistent_apk_packages:
+    name: Programy, které mají zůstat nainstalované
+    description: >-
+      Názvy balíčků Alpine Linuxu, každý na řádek (třeba htop, rsync).
+      Nainstalují se automaticky po každém restartu i aktualizaci. Názvy najdeš
+      na pkgs.alpinelinux.org.
+  persistent_pip_packages:
+    name: Python balíčky, které mají zůstat nainstalované
+    description: >-
+      Názvy Python balíčků, každý na řádek (třeba requests, pandas).
+      Nainstalují se automaticky po každém restartu i aktualizaci.
+network:
+  7680/tcp: Webové rozhraní (při použití panelu v postranní liště netřeba)
+  7681/tcp: Terminál (při použití panelu v postranní liště netřeba)

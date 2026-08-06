@@ -1,0 +1,126 @@
+#!/bin/bash
+# Install extra tools so they are still there after the add-on restarts.
+# Anything installed with plain 'apk add' disappears on the next start, because
+# the container filesystem is thrown away - /data is not.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+PERSIST_ROOT="/data/packages"
+PERSIST_BIN="${PERSIST_ROOT}/bin"
+PERSIST_LIB="${PERSIST_ROOT}/lib"
+PERSIST_PYTHON="${PERSIST_ROOT}/python"
+
+show_help() {
+    cat <<'EOF'
+persist-install - install tools that survive restarts
+
+  persist-install htop jq          install system packages
+  persist-install --python pandas  install Python packages
+  persist-install --list           show what is installed
+  persist-install --help           this text
+
+Everything lands in /data/packages, which is persistent storage.
+To make a package come back automatically even after the add-on is
+reinstalled, add it to 'persistent_apk_packages' (or
+'persistent_pip_packages') in the add-on Configuration tab instead.
+EOF
+}
+
+list_packages() {
+    echo "Persistent tools in ${PERSIST_ROOT}"
+    echo
+    echo "Programs:"
+    if [ -d "${PERSIST_BIN}" ] && [ -n "$(ls -A "${PERSIST_BIN}" 2>/dev/null)" ]; then
+        ls -1 "${PERSIST_BIN}" | sed 's/^/  /'
+    else
+        echo "  (none yet - try: persist-install htop)"
+    fi
+    echo
+    echo "Python packages:"
+    if [ -x "${PERSIST_PYTHON}/venv/bin/pip" ]; then
+        "${PERSIST_PYTHON}/venv/bin/pip" list --format=columns | tail -n +3 | sed 's/^/  /'
+    else
+        echo "  (none yet - try: persist-install --python requests)"
+    fi
+    echo
+    echo "Space used: $(du -sh "${PERSIST_ROOT}" 2>/dev/null | cut -f1)"
+}
+
+install_system_packages() {
+    local pkg file
+    mkdir -p "${PERSIST_BIN}" "${PERSIST_LIB}"
+
+    echo "Installing: $*"
+    if ! apk add --no-cache "$@"; then
+        echo
+        echo "Alpine could not install that."
+        echo "What to do:"
+        echo "  * Check the spelling - names differ from Debian/Ubuntu"
+        echo "    (for example 'py3-pip', not 'python3-pip')."
+        echo "  * Search for the right name at https://pkgs.alpinelinux.org/packages"
+        echo "  * No internet? Check that Home Assistant itself is online."
+        return 1
+    fi
+
+    echo "Copying to persistent storage..."
+    for pkg in "$@"; do
+        apk info -L "${pkg}" 2>/dev/null | while read -r file; do
+            case "${file}" in
+                usr/bin/*|usr/sbin/*|bin/*|sbin/*)
+                    [ -x "/${file}" ] && [ -f "/${file}" ] && cp -a "/${file}" "${PERSIST_BIN}/" 2>/dev/null
+                    ;;
+                usr/lib/*.so*|lib/*.so*)
+                    [ -f "/${file}" ] && cp -a "/${file}" "${PERSIST_LIB}/" 2>/dev/null
+                    ;;
+            esac
+        done
+    done
+
+    echo
+    echo "Done. These stay available after a restart."
+    echo "If a program still says 'not found' after restarting, add it to"
+    echo "'persistent_apk_packages' in the add-on Configuration tab."
+}
+
+install_python_packages() {
+    if [ ! -x "${PERSIST_PYTHON}/venv/bin/python" ]; then
+        echo "Setting up the Python environment (first time only)..."
+        mkdir -p "${PERSIST_PYTHON}"
+        if ! python3 -m venv "${PERSIST_PYTHON}/venv"; then
+            echo "Could not create the Python environment."
+            echo "What to do: run 'persist-install python3 py3-pip' first, then try again."
+            return 1
+        fi
+    fi
+
+    echo "Installing Python packages: $*"
+    if ! "${PERSIST_PYTHON}/venv/bin/pip" install --upgrade pip >/dev/null 2>&1; then
+        echo "(could not update pip itself, continuing anyway)"
+    fi
+    if ! "${PERSIST_PYTHON}/venv/bin/pip" install "$@"; then
+        echo
+        echo "pip could not install that."
+        echo "What to do:"
+        echo "  * Check the package name at https://pypi.org"
+        echo "  * Some packages need a compiler; try 'persist-install build-base' first."
+        return 1
+    fi
+    echo
+    echo "Done. Available right away and after restarts."
+}
+
+case "${1:-}" in
+    -h|--help|help|"") show_help ;;
+    -l|--list|list)    list_packages ;;
+    -p|--python|python)
+        shift
+        if [ "$#" -eq 0 ]; then
+            echo "Tell me which Python package to install, for example:"
+            echo "  persist-install --python requests"
+            exit 1
+        fi
+        install_python_packages "$@"
+        ;;
+    *) install_system_packages "$@" ;;
+esac

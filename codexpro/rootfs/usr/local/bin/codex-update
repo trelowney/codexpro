@@ -1,0 +1,93 @@
+#!/bin/bash
+# Updating Codex from inside the container. This runs as root and installs into
+# /data/npm, which is a persistent volume - so it can never fail with
+# "permission denied" and the update is still there after an add-on restart.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+NPM_ROOT="${NPM_CONFIG_PREFIX:-/data/npm}"
+PKG="@openai/codex"
+
+C_TITLE=$'\033[1;36m'
+C_WARN=$'\033[1;33m'
+C_OK=$'\033[1;32m'
+C_DIM=$'\033[2m'
+C_OFF=$'\033[0m'
+
+current_version() { codex --version 2>/dev/null || echo "unknown"; }
+
+reset_install() {
+    echo "${C_TITLE}Removing the updated copy of Codex${C_OFF}"
+    echo "The version built into the add-on will be used again."
+    rm -rf "${NPM_ROOT}/bin/codex" "${NPM_ROOT}/bin/codex.broken" \
+           "${NPM_ROOT}/lib/node_modules/@openai" 2>/dev/null
+    hash -r 2>/dev/null
+    echo
+    echo "${C_OK}Done.${C_OFF} Codex now in use: $(current_version)"
+    echo "Restart the add-on if the version above still looks wrong."
+}
+
+case "${1:-}" in
+    -h|--help|help)
+        cat <<'EOF'
+codex-update - install the newest Codex CLI
+
+  codex-update           update to the newest published version
+  codex-update --reset   throw the updated copy away and go back to the
+                         version that ships with the add-on
+  codex-update --check   only show which version is installed
+
+The update is stored in /data, so it survives restarts of the add-on.
+Updating the add-on itself is a separate thing (Settings > Add-ons).
+EOF
+        exit 0
+        ;;
+    --reset)
+        reset_install
+        exit 0
+        ;;
+    --check)
+        echo "Installed Codex: $(current_version)"
+        echo "Location:        $(command -v codex || echo 'not found')"
+        exit 0
+        ;;
+esac
+
+before="$(current_version)"
+echo "${C_TITLE}Updating Codex${C_OFF}"
+echo "Installed now: ${before}"
+echo "${C_DIM}Downloading from npm, this usually takes under a minute...${C_OFF}"
+echo
+
+log="$(mktemp)"
+if ! npm install -g "${PKG}@latest" --prefer-online >"${log}" 2>&1; then
+    echo "${C_WARN}The update did not finish.${C_OFF}"
+    echo
+    echo "Last lines of the log:"
+    tail -n 12 "${log}" | sed 's/^/  /'
+    rm -f "${log}"
+    echo
+    echo "What to do:"
+    echo "  * No internet in the container? Check that Home Assistant itself is online."
+    echo "  * Disk full? Run 'df -h /data' - free some space and try again."
+    echo "  * Nothing changed on your side: the old version still works, just"
+    echo "    run 'codex-update' again later."
+    exit 1
+fi
+rm -f "${log}"
+hash -r 2>/dev/null
+
+after="$(current_version)"
+if [ "${after}" = "unknown" ]; then
+    echo "${C_WARN}The new copy of Codex does not start.${C_OFF}"
+    echo "Getting you back to a working state now..."
+    reset_install
+    exit 1
+fi
+
+echo "${C_OK}Updated.${C_OFF}"
+echo "  before: ${before}"
+echo "  now:    ${after}"
+echo
+echo "Start a new Codex session from the menu to use it."

@@ -1,0 +1,87 @@
+#!/bin/bash
+# Apply configuration changes without guessing which command is the right one.
+[ -f /etc/profile.d/codexpro.sh ] && . /etc/profile.d/codexpro.sh
+
+set -u
+
+say()  { printf '%s\n' "$*"; }
+line() { printf '%s\n' "----------------------------------------------------------"; }
+
+usage() {
+    cat <<'EOF'
+ha-reload - apply Home Assistant configuration changes
+
+  ha-reload            check the configuration, then reload it
+  ha-reload --check    only check the configuration, change nothing
+  ha-reload --restart  check, then fully restart Home Assistant Core
+
+When to use which:
+  * You edited a YAML file (automations, scripts, sensors)  -> ha-reload
+  * You edited a UI dashboard in /config/.storage/lovelace* -> ha-reload --restart
+    (Home Assistant keeps those in memory, a plain reload will not pick them up)
+  * You changed configuration.yaml basics (recorder, http, ...) -> ha-reload --restart
+
+Nothing here deletes anything. If a check fails, nothing is applied.
+EOF
+}
+
+check_config() {
+    say "Checking the Home Assistant configuration..."
+    if ha core check; then
+        say "Configuration is valid."
+        return 0
+    fi
+    line
+    say "The configuration has an error, so nothing was applied."
+    say "What to do:"
+    say "  1. Read the error above - it names the file and the line."
+    say "  2. Fix that file (ask Codex: 'fix this error in <file>')."
+    say "  3. Run 'ha-reload' again."
+    line
+    return 1
+}
+
+case "${1:-}" in
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+    --check)
+        check_config
+        exit $?
+        ;;
+    --restart)
+        check_config || exit 1
+        say "Restarting Home Assistant Core. The web interface will be unavailable for a minute."
+        if ha core restart; then
+            say "Restart requested. Reload your Home Assistant browser tab in about a minute."
+        else
+            say "The restart command failed. Try it from Settings > System > top-right menu > Restart Home Assistant."
+        fi
+        exit 0
+        ;;
+    "")
+        ;;
+    *)
+        say "Unknown option: $1"
+        say ""
+        usage
+        exit 1
+        ;;
+esac
+
+check_config || exit 1
+
+say "Reloading the configuration..."
+if ha core reload; then
+    say "Done. Your changes are live."
+    say "If you edited a UI dashboard and still see the old one, run: ha-reload --restart"
+else
+    line
+    say "The reload command failed."
+    say "What to do:"
+    say "  * Try a full restart:  ha-reload --restart"
+    say "  * Or restart from Settings > System > top-right menu > Restart Home Assistant."
+    line
+    exit 1
+fi
