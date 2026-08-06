@@ -21,7 +21,7 @@ is what this repository is:
 
 1. In Home Assistant go to **Settings → Add-ons → Add-on Store**.
 2. Top-right **⋮ → Repositories**.
-3. Paste `https://github.com/{{OWNER}}/codexpro` and press **Add**, then **Close**.
+3. Paste `https://github.com/trelowney/codexpro` and press **Add**, then **Close**.
 4. Refresh the page. **Codex Pro** now appears in the store — open it and press
    **Install**.
 5. Press **Start**, then **Open Web UI** (or use the sidebar entry).
