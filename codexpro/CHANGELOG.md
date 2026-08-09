@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The first start after installing or updating could report `MCP startup
+  interrupted. The following servers were not initialized: homeassistant`.
+  Nothing was broken — Codex simply started before the MCP server had finished
+  coming up, and the next start had it — but it looked alarming. The server is
+  now warmed up in the background before Codex is launched, and it is given an
+  explicit 60-second start-up window (`startup_timeout_sec`) so a slow disk or
+  a small ARM board cannot run out of time either. Set `startup_timeout_sec`
+  yourself in `config.toml` and your value is kept
+
 ## [1.1.0] - 2026-08-06
 
 Direct access to the Home Assistant API, and an MCP server that can be updated

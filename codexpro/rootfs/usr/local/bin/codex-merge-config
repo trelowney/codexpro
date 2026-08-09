@@ -34,6 +34,7 @@ BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 INVALID_PROJECT_TABLE_RE = re.compile(r"^\[projects\.(\/[^\]]+)\]$")
 
 MCP_COMMAND = "/usr/local/bin/hass-mcp-wrapper"
+MCP_STARTUP_TIMEOUT_SEC = 60
 WRITABLE_ROOTS = ["/homeassistant", "/addon_configs", "/share", "/media", "/data"]
 SANDBOX_MODES = {"workspace": "workspace-write", "full": "danger-full-access"}
 APPROVAL_POLICIES = {"untrusted", "on-failure", "on-request", "never"}
@@ -242,6 +243,12 @@ def main():
         merged = dict(restored if isinstance(restored, dict) else {})
         merged.update(existing)
         merged["command"] = MCP_COMMAND
+        # Codex gives an MCP server a short window to finish its handshake and
+        # reports "MCP startup incomplete" if it misses it. Starting hass-mcp
+        # means starting a Python interpreter, which on a slow disk or a small
+        # ARM board can take several seconds - and the first start after an
+        # update is the slowest one there is. A value the user set by hand wins.
+        merged.setdefault("startup_timeout_sec", MCP_STARTUP_TIMEOUT_SEC)
         mcp_servers["homeassistant"] = merged
         meta["managed_homeassistant_mcp"] = True
     else:

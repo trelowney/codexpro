@@ -246,6 +246,23 @@ setup_ha_mcp_server() {
 }
 
 # ---------------------------------------------------------------------------
+# Warm the MCP server up before Codex ever asks for it
+# ---------------------------------------------------------------------------
+# Codex is launched a couple of seconds from here and waits only briefly for
+# its MCP servers, so start hass-mcp once in the background and throw the
+# result away. This buys nothing on a fast disk - measured 1.57 s warm against
+# 1.52-1.69 s cold, the handshake is spent importing Python and the MCP SDK,
+# not reading them - and is kept for the case it was written for: a small board
+# on slow flash, where that first read is the expensive part. The real
+# protection is 'startup_timeout_sec' in config.toml.
+# Failures here are deliberately silent: this is an optimisation, and
+# 'setup_ha_mcp_server' has already reported anything that actually matters.
+warm_up_ha_mcp() {
+    [ "$(config_bool 'enable_ha_mcp' 'true')" = "true" ] || return 0
+    ( timeout 30 hass-mcp-wrapper </dev/null >/dev/null 2>&1 || true ) &
+}
+
+# ---------------------------------------------------------------------------
 # Codex configuration (~/.codex/config.toml) - merged, never overwritten
 # ---------------------------------------------------------------------------
 setup_codex_config() {
@@ -499,6 +516,7 @@ main() {
     setup_codex_cli
     setup_ha_mcp_server
     setup_codex_config
+    warm_up_ha_mcp
     setup_tmux
     setup_persistent_packages
     start_image_service

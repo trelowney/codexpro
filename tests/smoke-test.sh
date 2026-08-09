@@ -100,6 +100,8 @@ check "ha-api --help"                    docker exec "${NAME}" ha-api --help
 check "ha-ws --help"                     docker exec "${NAME}" ha-ws --help
 check "mcp-update --check"               docker exec "${NAME}" bash -lc "mcp-update --check"
 check "AGENTS.md documents the API"      docker exec "${NAME}" sh -c "grep -q 'ha-api GET /api/states' /data/codex/AGENTS.md"
+check "MCP has a start-up timeout"       docker exec "${NAME}" python3 -c \
+    "import tomllib;c=tomllib.load(open('/data/codex/config.toml','rb'));assert c['mcp_servers']['homeassistant']['startup_timeout_sec'] >= 30"
 check "no stray pytest shim shadowing test" docker exec "${NAME}" sh -c "! test -e /usr/local/bin/test"
 
 echo
