@@ -12,6 +12,8 @@ ENV \
     TERM=xterm-256color
 
 # Base tooling. bubblewrap is what the Codex sandbox uses for workspace-write mode.
+# procps-ng: Codex (0.163+) runs `ps -o lstart= -p <pid>` for its background
+# server and refuses to start when busybox ps rejects those options.
 RUN apk add --no-cache \
         bash \
         bubblewrap \
@@ -31,6 +33,7 @@ RUN apk add --no-cache \
         npm \
         openssh-client \
         openssl \
+        procps-ng \
         ripgrep \
         sed \
         tar \

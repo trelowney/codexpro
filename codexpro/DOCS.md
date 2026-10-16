@@ -86,7 +86,7 @@ covers what you asked for.
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |
 | `auto_update_codex` | Fetch the newest Codex CLI on every start |
 | `auto_update_ha_mcp` | Fetch the newest Home Assistant connection (hass-mcp) on every start |
-| `tmux_mouse` | Mouse in the terminal; breaks browser copy/paste |
+| `tmux_mouse` | Mouse in the terminal; hold Shift to select text for copying |
 | `persistent_apk_packages` | Alpine packages reinstalled after every restart |
 | `persistent_pip_packages` | Python packages reinstalled after every restart |
 
@@ -102,9 +102,53 @@ covers what you asked for.
 
 ## Images
 
-Paste or drag an image into the web interface. It is saved to `/data/images` and
-its path is typed into the terminal, so you can ask Codex about a screenshot of
-your dashboard.
+Paste (Ctrl+V or Cmd+V), drag, or pick an image with 📎 in the web interface.
+It is saved to `/data/images` and its path is typed at the prompt, so you can
+ask Codex about a screenshot of your dashboard. Pasting works while the cursor
+is in the terminal too. Ctrl+V always pastes from your computer's clipboard
+(text or image); it is no longer passed on to programs in the terminal.
+
+## Copying text out of the terminal
+
+- **With a mouse:** select the text; it is copied as soon as you let go (a
+  small ✂ confirmation appears). If Codex has taken the mouse, hold Shift while
+  selecting.
+- **📋 Copy** in the header opens the terminal text in a box: copy all of it,
+  or long-press to select a part. This is the way on a phone or tablet.
+- **🔗 Copy link** appears whenever a link is on screen (for example the
+  sign-in link) and copies just that link, even when it is wrapped over
+  several lines.
+
+Over plain `http://` some browsers refuse automatic copying; the 📋 button
+still works there because it is a click.
+
+## Files sidebar
+
+**🗂️ Files** in the header opens a sidebar on the right with:
+
+- **Files** — the Home Assistant configuration folder as a tree. Click a file
+  to preview it (read-only), then **Insert path** types its path at the prompt
+  so you can ask Codex about it.
+- **Recent changes** — files changed in the last hour, day or week, newest
+  first. Handy for seeing what Codex just edited.
+- **✓ Check HA configuration** — runs Home Assistant's configuration check and
+  shows the result.
+
+The sidebar never changes a file. Drag its left edge to resize it; » hides it
+to a thin rail. It remembers whether it was open and how wide.
+
+## Security
+
+The terminal is a root shell with no login of its own, so by default it is
+reachable **only through the sidebar panel**, which requires a Home Assistant
+administrator login. Other add-ons on the internal network cannot connect to
+it.
+
+The add-on's Network section lists ports 7680 (web interface) and 7681
+(terminal). They are off by default and the panel does not need them. If you
+give one a port number, anyone who can reach that port gets the root shell
+**without any login** — only do that on a network you trust completely, and
+restart the add-on afterwards.
 
 ## Troubleshooting
 
@@ -120,3 +164,4 @@ space, and each failed check says what to do about it.
 | A command disappeared after a restart | Install it with `persist-install`, or add it to `persistent_apk_packages` |
 | Terminal shows nothing | Restart the add-on; the session is recreated on the next connection |
 | MCP errors in the log | Set `enable_ha_mcp: false` — file access keeps working |
+| Direct access on port 7680/7681 stopped working | Since 1.2.0 the ports are closed unless published; see Security above |

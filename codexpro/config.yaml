@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.1.0"
+version: "1.2.0"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
@@ -26,8 +26,8 @@ ports:
   7680/tcp: null
   7681/tcp: null
 ports_description:
-  7680/tcp: "Web interface (optional - the sidebar panel works without it)"
-  7681/tcp: "Terminal (optional - only needed for direct access)"
+  7680/tcp: "Web interface without the sidebar. Not needed - the panel works without it. NO LOGIN: anyone who can reach this port gets a root shell. Leave empty unless the network is fully trusted."
+  7681/tcp: "Bare terminal without the sidebar. Not needed - the panel works without it. NO LOGIN: anyone who can reach this port gets a root shell. Leave empty unless the network is fully trusted."
 
 # Folder access, in the dict form current Supervisor documents. /config is
 # created inside the container as a shortcut to /homeassistant so both path

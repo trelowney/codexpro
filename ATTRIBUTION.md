@@ -33,6 +33,10 @@ Taken from it:
   container
 - `persist-install` for extra apk/pip packages that survive restarts
 - the image-paste web interface (`image-service/`)
+- later fixes adopted in 1.2.0: the terminal clipboard bridge
+  (`terminal-clipboard.js`), image paste inside the terminal frame, the files
+  sidebar (`files-api.mjs`), ingress-only access to the terminal, the
+  terminal reset in the menu, and the dependency updates
 
 ## What is new here
 

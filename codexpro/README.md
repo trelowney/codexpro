@@ -45,7 +45,12 @@ Three things about the existing Codex add-on made it painful. All three are fixe
 - **`ha-reload`** — validates the configuration and applies it without a full
   restart (`--restart` when you changed a UI dashboard).
 - **`persist-install`** — extra Alpine and Python packages that survive restarts.
-- **Image paste** — drop a screenshot into the web interface and ask about it.
+- **Image paste** — paste or drop a screenshot into the web interface and ask
+  about it, even while the cursor is in the terminal.
+- **Copy that works** — mouse selection, a 📋 button for phones and tablets,
+  and one-tap copying of the link on screen.
+- **Files sidebar** — browse and preview the configuration, see what changed
+  recently, and run Home Assistant's configuration check.
 - **`codex-doctor`** — one command that checks sign-in, file access, the API, the
   configuration file, the session and free disk space.
 

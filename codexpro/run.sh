@@ -408,6 +408,11 @@ set -g base-index 1
 set -g renumber-windows on
 set -ga terminal-overrides ',xterm*:smcup@:rmcup@'
 set -g allow-passthrough on
+# Let programs in the pane set the browser clipboard through OSC 52, and pass
+# it on to the terminal page. tmux only does that when the outer terminal
+# declares clipboard support, which ttyd's page always has.
+set -g set-clipboard on
+set -as terminal-features ',*:clipboard'
 set -g status-bg colour235
 set -g status-fg colour136
 set -g status-left '[codex] '
@@ -462,13 +467,35 @@ normalize_config_list() {
 # ---------------------------------------------------------------------------
 # Image paste service (also serves the web UI that embeds the terminal)
 # ---------------------------------------------------------------------------
+
+# True if the user mapped this container port to a host port in the add-on's
+# Network section. If the Supervisor cannot be asked, the answer is "no", which
+# keeps the port closed - the sidebar panel works either way.
+# DEV_DIRECT_ACCESS=1 (docker run -e, for testing without a Supervisor) forces
+# it; add-on users have no way to set it.
+port_is_published() {
+    [ "${DEV_DIRECT_ACCESS:-0}" = "1" ] && return 0
+    local host_port
+    host_port="$(bashio::addon.port "$1" 2>/dev/null || true)"
+    [ -n "${host_port}" ] && [ "${host_port}" != "null" ]
+}
 start_image_service() {
     export IMAGE_SERVICE_PORT="${WEB_PORT}"
     export TTYD_PORT="${TTYD_PORT}"
     export UPLOAD_DIR="${DATA_ROOT}/images"
 
+    # The web interface is a root shell with no login of its own. Unless its
+    # port has been published on purpose, it only accepts the Supervisor's
+    # ingress proxy, so other add-ons on the internal network are refused.
+    if port_is_published "${WEB_PORT}"; then
+        export ALLOW_DIRECT_ACCESS=1
+        bashio::log.warning "Port ${WEB_PORT} is published: the web interface is reachable without a Home Assistant login."
+    else
+        export ALLOW_DIRECT_ACCESS=0
+    fi
+
     bashio::log.info "Starting the web interface on port ${WEB_PORT}..."
-    node /opt/image-service/server.js 2>&1 | while IFS= read -r line; do
+    node /opt/image-service/server.mjs 2>&1 | while IFS= read -r line; do
         bashio::log.info "[web] ${line}"
     done &
 
@@ -495,11 +522,19 @@ start_terminal() {
         tmux new-session -d -s "${TMUX_SESSION}" -c /homeassistant "/usr/local/bin/codex-menu"
     fi
 
+    # ttyd has no login of its own either. Unless its port is published, it
+    # listens on loopback only, where just the web interface's proxy reaches it.
+    local interface=127.0.0.1
+    if port_is_published "${TTYD_PORT}"; then
+        interface=0.0.0.0
+        bashio::log.warning "Port ${TTYD_PORT} is published: the terminal is reachable without a Home Assistant login."
+    fi
+
     bashio::log.info "Terminal ready. Open the add-on panel in the sidebar."
 
     exec ttyd \
         --port "${TTYD_PORT}" \
-        --interface 0.0.0.0 \
+        --interface "${interface}" \
         --writable \
         --ping-interval 30 \
         --client-option reconnect=5 \

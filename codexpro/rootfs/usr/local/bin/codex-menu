@@ -19,6 +19,17 @@ is_signed_in() {
     [ -s "${CODEX_HOME:-/data/codex}/auth.json" ] || [ -n "${OPENAI_API_KEY:-}" ]
 }
 
+# Codex puts the terminal in raw mode and turns on extended keyboard
+# reporting. If it dies without undoing that (crash, out of memory, killed),
+# the menu cannot see Enter and nothing echoes, so it looks frozen.
+reset_terminal() {
+    [ -t 0 ] || return 0
+    stty sane 2>/dev/null
+    # Keyboard protocols (kitty, modifyOtherKeys), bracketed paste, focus
+    # events, mouse tracking, alternate screen; then show the cursor again.
+    printf '\033[<u\033[>4;0m\033[?2004l\033[?1004l\033[?1000l\033[?1002l\033[?1003l\033[?1006l\033[?1049l\033[?25h'
+}
+
 pause() {
     printf '\n%s' "Press Enter to go back to the menu... "
     read -r _ || true
@@ -42,6 +53,7 @@ run_codex() {
 
     codex "$@"
     local status=$?
+    reset_terminal
 
     if [ ${status} -ne 0 ]; then
         echo
@@ -60,6 +72,7 @@ run_codex() {
 }
 
 header() {
+    reset_terminal
     clear
     echo "${C_TITLE}  Codex Pro for Home Assistant${C_OFF}"
     echo "${C_DIM}  ------------------------------------------------------------${C_OFF}"

@@ -1,8 +1,38 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.0] - 2026-10-16
+
+Copying and pasting that actually work, a files sidebar, and a terminal that
+only the sidebar panel can reach.
+
+### Added
+
+- **Files sidebar** (🗂️ Files in the header): the configuration folder as a
+  tree with a read-only preview, the files changed in the last hour, day or
+  week, and a button that runs Home Assistant's configuration check. Insert
+  path types a file's path at the prompt. Resizable, hides to a thin rail,
+  and remembers both
+- **📋 Copy** in the header: the terminal text in a box you can copy from,
+  which is the only way to copy on a phone or tablet
+- **🔗 Copy link** appears whenever a link is on screen and copies exactly
+  that link, even when it is wrapped over several lines
 
 ### Fixed
+
+- Codex 0.163 and newer did not start at all ("failed to record pid-managed
+  app-server process ... rerun with --no-daemon"). It needs a full `ps`
+  command, which the add-on now includes. If you already updated Codex from
+  the menu and it stopped working, this update fixes it - nothing else to do
+- Selecting text with the mouse copied nothing, although a ✂ confirmation
+  appeared. The selection is now really copied, and ✂ only shows when it was
+- Pasting an image did nothing while the cursor was in the terminal, and
+  Ctrl+V reached Codex as a request to read the container's (empty)
+  clipboard. Ctrl+V now pastes from your computer — an image is uploaded and
+  its path typed at the prompt, text is pasted as text
+- After Codex crashed, the menu could look frozen (Enter not recognised,
+  nothing echoed). The menu now resets the terminal every time it is shown
+- An uploaded image's file extension came from the browser's file name; it
+  now comes from the actual image type
 
 - The first start after installing or updating could report `MCP startup
   interrupted. The following servers were not initialized: homeassistant`.
@@ -12,6 +42,15 @@
   explicit 60-second start-up window (`startup_timeout_sec`) so a slow disk or
   a small ARM board cannot run out of time either. Set `startup_timeout_sec`
   yourself in `config.toml` and your value is kept
+
+### Security
+
+- The terminal (a root shell with no login of its own) could be reached by
+  other add-ons on Home Assistant's internal network. It now accepts only the
+  sidebar panel, unless you deliberately give port 7680 or 7681 a number in
+  the add-on's Network section — in which case it behaves as before
+- Web interface libraries updated: `multer` 1.x → 2.x (known
+  denial-of-service flaws in 1.x) and `http-proxy-middleware` 2.x → 4.x
 
 ## [1.1.0] - 2026-08-06
 
