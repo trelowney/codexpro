@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.1] - 2026-10-16
+
+### Fixed
+
+- With `approval_policy: never`, every Home Assistant tool was refused ("MCP
+  tool call requires approval, but approval policy is never") - even just
+  reading a dashboard. Newer Codex asks before each of these tools, and in
+  `never` mode there is nobody to ask. In that mode they are now allowed,
+  exactly as the API helpers already were. Any other mode keeps asking, and a
+  `default_tools_approval_mode` you set yourself in `config.toml` wins
+- When a Home Assistant tool fails, Codex is told to do the same through
+  `ha-api` / `ha-ws` instead of giving up
+
 ## [1.2.0] - 2026-10-16
 
 Copying and pasting that actually work, a files sidebar, and a terminal that

@@ -151,6 +151,13 @@ check "mcp-update --check"               docker exec "${NAME}" bash -lc "mcp-upd
 check "AGENTS.md documents the API"      docker exec "${NAME}" sh -c "grep -q 'ha-api GET /api/states' /data/codex/AGENTS.md"
 check "MCP has a start-up timeout"       docker exec "${NAME}" python3 -c \
     "import tomllib;c=tomllib.load(open('/data/codex/config.toml','rb'));assert c['mcp_servers']['homeassistant']['startup_timeout_sec'] >= 30"
+check "MCP tools still ask by default"   docker exec "${NAME}" python3 -c \
+    "import tomllib;c=tomllib.load(open('/data/codex/config.toml','rb'));assert 'default_tools_approval_mode' not in c['mcp_servers']['homeassistant']"
+check "approval 'never' pre-approves MCP" docker exec "${NAME}" sh -c \
+    "rm -rf /tmp/cx && mkdir /tmp/cx && codex-merge-config --config /tmp/cx/config.toml --approval-policy never --file-access workspace --enable-mcp true >/dev/null && grep -q 'default_tools_approval_mode = \"approve\"' /tmp/cx/config.toml"
+check "Codex accepts that setting"       docker exec "${NAME}" sh -c \
+    "CODEX_HOME=/tmp/cx codex mcp get homeassistant >/dev/null"
+check "AGENTS.md says to fall back to the API" docker exec "${NAME}" sh -c "grep -q 'If an MCP tool fails with an error' /data/codex/AGENTS.md"
 check "no stray pytest shim shadowing test" docker exec "${NAME}" sh -c "! test -e /usr/local/bin/test"
 check "ps understands the options Codex uses" docker exec "${NAME}" ps -o lstart= -p 1
 docker exec "${NAME}" tmux new-session -d -s codexstart -x 150 -y 40 "codex; sleep 60"

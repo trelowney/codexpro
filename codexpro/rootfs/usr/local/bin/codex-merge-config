@@ -147,6 +147,32 @@ def repair_incompatible_values(config):
 # --------------------------------------------------------------------------
 # Managed-key merging
 # --------------------------------------------------------------------------
+def apply_mcp_tool_approval(server, meta, policy):
+    """Let the Home Assistant MCP tools run when Codex is told never to ask.
+
+    Codex asks before every MCP tool that does not declare itself read-only,
+    and hass-mcp declares none of them - so even reading a dashboard needs a
+    yes. With ``approval_policy = "never"`` there is nobody to say yes and
+    Codex refuses outright ("MCP tool call requires approval, but approval
+    policy is never"), which leaves the MCP server useless. In that mode the
+    API helpers already reach Home Assistant without asking, so pre-approving
+    the MCP tools gives Codex no more than it has. Any other policy keeps
+    asking, as before. A value the user set by hand wins; a value the add-on
+    set is withdrawn when the policy changes.
+    """
+    key = "default_tools_approval_mode"
+    tracker = "managed_mcp_tools_approval"
+    ours = meta.get(tracker)
+    if policy == "never":
+        if key not in server or (ours is not None and server.get(key) == ours):
+            server[key] = "approve"
+            meta[tracker] = "approve"
+    elif ours is not None:
+        if server.get(key) == ours:
+            server.pop(key, None)
+        meta.pop(tracker, None)
+
+
 def apply_managed(config, meta, key, value):
     """Seed a key from the add-on options without fighting the user.
 
@@ -249,6 +275,7 @@ def main():
         # ARM board can take several seconds - and the first start after an
         # update is the slowest one there is. A value the user set by hand wins.
         merged.setdefault("startup_timeout_sec", MCP_STARTUP_TIMEOUT_SEC)
+        apply_mcp_tool_approval(merged, meta, config.get("approval_policy"))
         mcp_servers["homeassistant"] = merged
         meta["managed_homeassistant_mcp"] = True
     else:

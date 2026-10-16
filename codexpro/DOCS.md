@@ -80,7 +80,7 @@ covers what you asked for.
 |---|---|
 | `auto_launch_codex` | Open straight into Codex instead of the menu |
 | `model` | Empty = the Codex default. Only fill in a model you know exists |
-| `approval_policy` | `on-request` (default), `untrusted`, `on-failure`, `never` |
+| `approval_policy` | `on-request` (default), `untrusted`, `on-failure`, `never`. With `never`, Codex uses the Home Assistant tools without asking; otherwise it asks before each one (answer "Allow for this session" to stop the questions) |
 | `file_access` | `workspace` = mapped folders (default), `full` = no restriction |
 | `enable_ha_mcp` | Let Codex query entities and call services |
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |

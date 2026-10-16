@@ -352,6 +352,11 @@ You have all three. Use whichever fits; they are not alternatives to each other.
    already authenticated; there is no token to look up and no host name to
    guess.
 
+If an MCP tool fails with an error, do the same thing with `ha-api` or `ha-ws`
+instead of stopping - reading a dashboard, for example, is `ha-ws
+lovelace/config`. If the user declined a tool call, respect that and do not
+redo it through the API.
+
 ### `ha-api` - the REST API
 
 ```bash
