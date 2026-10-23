@@ -11,11 +11,6 @@ ENV \
     LC_ALL=C.UTF-8 \
     TERM=xterm-256color
 
-# Builds are cached (GitHub Actions and the previous :latest image). Changing
-# the version must still fetch fresh packages, or a security release ships the
-# old ones.
-ARG BUILD_VERSION
-
 # Base tooling. bubblewrap is what the Codex sandbox uses for workspace-write mode.
 # procps-ng: Codex (0.163+) runs `ps -o lstart= -p <pid>` for its background
 # server and refuses to start when busybox ps rejects those options.
