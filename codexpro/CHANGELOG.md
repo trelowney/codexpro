@@ -1,13 +1,5 @@
 # Changelog
 
-## [1.2.2] - 2026-10-23
-
-### Security
-
-- Rebuilt on Node.js 22.23.4 from Alpine 3.21, which fixes the Node.js
-  security release of 2026-10-21 (including a Brotli out-of-bounds write and
-  TLS hostname check bypasses). Nothing else changed
-
 ## [1.2.1] - 2026-10-16
 
 ### Fixed

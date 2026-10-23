@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.2.2"
+version: "1.2.1"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
