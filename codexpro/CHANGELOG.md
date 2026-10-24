@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.2] - 2026-10-24
+
+### Security
+
+- Rebuilt on Node.js 22.23.4 from Alpine 3.21 on both amd64 and aarch64,
+  which fixes the Node.js security release of 2026-10-21 (including a Brotli
+  out-of-bounds write and TLS hostname check bypasses)
+
+### Changed
+
+- Codex CLI 0.164.0 (was 0.163)
+
 ## [1.2.1] - 2026-10-16
 
 ### Fixed
