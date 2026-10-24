@@ -19,6 +19,8 @@ ARG BUILD_VERSION
 # Base tooling. bubblewrap is what the Codex sandbox uses for workspace-write mode.
 # procps-ng: Codex (0.163+) runs `ps -o lstart= -p <pid>` for its background
 # server and refuses to start when busybox ps rejects those options.
+# nodejs has a minimum version: the build fails instead of shipping an old
+# Node.js from a stale cache (Node.js security release of 2026-10-21).
 RUN apk add --no-cache \
         bash \
         bubblewrap \
@@ -34,7 +36,7 @@ RUN apk add --no-cache \
         nano \
         ncurses \
         ncurses-terminfo-base \
-        nodejs \
+        "nodejs>=22.23.4" \
         npm \
         openssh-client \
         openssl \
