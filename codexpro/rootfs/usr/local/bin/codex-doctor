@@ -76,6 +76,18 @@ if [ -f "${CODEX_HOME}/config.toml" ]; then
         ok "Codex configuration file is valid"
         sandbox="$(grep -E '^sandbox_mode' "${CODEX_HOME}/config.toml" | head -n1 | cut -d'"' -f2)"
         [ -n "${sandbox}" ] && ok "File access mode: ${sandbox}"
+        if [ "$(cat /run/codexpro-sandbox 2>/dev/null)" = "fallback" ]; then
+            warn "The add-on option 'file_access' says workspace, but Codex's sandbox cannot work in this container, so full access is used." \
+                 "Nothing to fix - set 'file_access: full' in the add-on configuration to make this message go away."
+        fi
+        # Run one command exactly the way Codex runs its commands
+        out="$(cd /homeassistant 2>/dev/null || cd /; timeout 30 codex sandbox \
+            -c "sandbox_mode=\"${sandbox:-danger-full-access}\"" -- sh -c 'echo codexpro-sandbox-ok' 2>&1)"
+        case "${out}" in
+            *codexpro-sandbox-ok*) ok "Codex can run commands (ha-api, ls, ...)" ;;
+            *) bad "Codex cannot run any command: $(printf '%s' "${out}" | grep -v 'arg0 temp' | grep -v '^\s*$' | head -n1)" \
+                   "Set 'file_access: full' in the add-on configuration and restart the add-on." ;;
+        esac
     else
         bad "${CODEX_HOME}/config.toml is damaged." "Restart the add-on - it rewrites the file and keeps a backup next to it."
     fi

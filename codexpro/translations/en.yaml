@@ -23,10 +23,12 @@ configuration:
   file_access:
     name: Which files Codex may change
     description: >-
-      workspace = your Home Assistant configuration, other add-on configs, share
-      and media (recommended - this is already everything you normally need).
-      full = no restrictions at all inside the container. Choose "full" only if
-      something legitimate is being blocked.
+      full = Codex can run commands and change files everywhere the add-on
+      can see (recommended; the add-on only sees your Home Assistant
+      configuration, other add-on configs, share, media and add-ons anyway).
+      workspace = Codex's own extra sandbox; Home Assistant's add-on container
+      does not allow it, so the add-on falls back to full and says so in the
+      log.
   enable_ha_mcp:
     name: Let Codex talk to Home Assistant directly
     description: >-

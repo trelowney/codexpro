@@ -91,7 +91,7 @@ Every option is explained in the add-on's Configuration tab. The short version:
 - `auto_launch_codex` — jump straight into Codex instead of the menu
 - `model` — leave empty unless you want a specific model
 - `approval_policy` — how often Codex asks before acting (`on-request` default)
-- `file_access` — `workspace` (mapped folders) or `full` (no restriction)
+- `file_access` — `full` (default; everything the add-on sees) or `workspace` (Codex's own sandbox, which Home Assistant's add-on container does not allow - the add-on then falls back to `full`)
 - `enable_ha_mcp` — let Codex query entities and call services, not just files
 - `openai_api_key` — optional, only for API-key billing
 - `auto_update_codex` — update the CLI on every start

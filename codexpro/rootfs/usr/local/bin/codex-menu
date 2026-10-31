@@ -63,7 +63,7 @@ run_codex() {
         echo "  * If it complains about the model -> clear the 'model' option in the"
         echo "    add-on Configuration tab (empty = whatever Codex uses by default)"
         echo "    and restart the add-on."
-        echo "  * If it mentions a sandbox or seccomp problem -> set 'file_access: full'"
+        echo "  * If it mentions a sandbox, bwrap or seccomp problem -> set 'file_access: full'"
         echo "    in the add-on configuration and restart the add-on."
         echo "  * Anything else -> choose '9' in the menu to run the self-check."
         pause

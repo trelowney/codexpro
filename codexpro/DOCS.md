@@ -85,7 +85,7 @@ covers what you asked for.
 | `auto_launch_codex` | Open straight into Codex instead of the menu |
 | `model` | Empty = the Codex default. Only fill in a model you know exists |
 | `approval_policy` | `on-request` (default), `untrusted`, `on-failure`, `never`. With `never`, Codex uses the Home Assistant tools without asking; otherwise it asks before each one (answer "Allow for this session" to stop the questions) |
-| `file_access` | `workspace` = mapped folders (default), `full` = no restriction |
+| `file_access` | `full` (default) = Codex can run commands and change files in everything the add-on sees - which is only the folders listed below. `workspace` = Codex's own extra sandbox; Home Assistant's add-on container does not allow it, so the add-on falls back to `full` and says so in the log |
 | `enable_ha_mcp` | Let Codex query entities and call services |
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |
 | `auto_update_codex` | Fetch the newest Codex CLI on every start |
@@ -179,7 +179,7 @@ space, and each failed check says what to do about it.
 |---|---|
 | "not signed in" | `codex-login`, option 1 |
 | Codex says it cannot edit a UI dashboard | `mcp-update`, then start a new session — the dashboard tools are newer than some releases |
-| Codex will not write a file | Set `file_access: full` and restart the add-on |
+| Codex will not write a file, or says `bwrap: ... Permission denied` | Set `file_access: full` and restart the add-on; `codex-doctor` checks whether Codex can run commands |
 | A command disappeared after a restart | Install it with `persist-install`, or add it to `persistent_apk_packages` |
 | Terminal shows nothing | Restart the add-on; the session is recreated on the next connection |
 | MCP errors in the log | Set `enable_ha_mcp: false` — file access keeps working |

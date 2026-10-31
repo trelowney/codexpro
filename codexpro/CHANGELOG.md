@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.1] - 2026-10-31
+
+### Fixed
+
+- **Codex could not run any command** (not `ha-api`, not even `ls`) with
+  `file_access: workspace`: Home Assistant's add-on container does not allow
+  Codex's sandbox (`bwrap: Failed to make / slave: Permission denied`). This
+  was the case in 1.2.x too. The add-on now tries one command at start the
+  way Codex runs them; if the sandbox cannot work, it uses full access and
+  says so in the log. The add-on container itself still keeps Codex to the
+  mapped folders
+- `codex-doctor` now checks that Codex can actually run commands
+
+### Changed
+
+- `file_access` defaults to `full` for new installations
+
 ## [1.3.0] - 2026-10-31
 
 Upload any file, see and undo what changed, smaller backups.

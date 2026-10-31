@@ -112,7 +112,11 @@ docker run -d --name "${DIRECT}" --network "${NET}" --ip "${DIRECT_IP}" \
     -e DEV_DIRECT_ACCESS=1 \
     -v "${WORK}/direct-data:/data" \
     "${IMAGE}" >/dev/null || exit 1
+# seccomp=unconfined: like a Home Assistant add-on, the container may create
+# user namespaces but not mount, which is exactly where Codex's own sandbox
+# (bubblewrap) fails there: "bwrap: Failed to make / slave"
 docker run -d --name "${NAME}" --network "${NET}" --ip "${ADDON_IP}" \
+    --security-opt seccomp=unconfined \
     -v "${WORK}/data:/data" \
     -v "${WORK}/ha:/homeassistant" \
     -v "${WORK}/share:/share" \
@@ -161,6 +165,19 @@ check "config.toml parses"               docker exec "${NAME}" python3 -c \
 check "AGENTS.md written"                docker exec "${NAME}" sh -c "test -s /data/codex/AGENTS.md"
 check "codex-update --check"             docker exec "${NAME}" codex-update --check
 check "codex-doctor runs"                docker exec "${NAME}" bash -lc "codex-doctor >/dev/null"
+echo "Codex can run commands (HA-like container; the workspace fallback itself is tested against a fake Supervisor in the upgrade test):"
+# Run a command the way Codex does. 'codex sandbox' ignores sandbox_mode in
+# config.toml, so pass the active mode from it explicitly. $1 command, $2 expected output.
+codex_runs() {
+    docker exec "${NAME}" bash -lc 'mode="$(sed -n "s/^sandbox_mode = \"\(.*\)\"/\1/p" /data/codex/config.toml)"
+        cd /homeassistant && codex sandbox -c "sandbox_mode=\"${mode}\"" -- sh -c "$1" 2>&1' _ "$1" | grep -q "$2"
+}
+check "Codex's sandbox really fails here (workspace)" sh -c "docker exec ${NAME} bash -lc 'cd /homeassistant; codex sandbox -c sandbox_mode=\\\"workspace-write\\\" -- echo x 2>&1' | grep -q 'bwrap'"
+check "config.toml: full access (default)" docker exec "${NAME}" grep -q '^sandbox_mode = "danger-full-access"' /data/codex/config.toml
+check "Codex runs a command with the active setting" codex_runs 'command -v ha-api && test -s /homeassistant/configuration.yaml && echo RUN_OK' RUN_OK
+check "  ... and can write into /homeassistant" codex_runs 'touch /homeassistant/.cx-run-test && rm /homeassistant/.cx-run-test && echo W_OK' W_OK
+check "codex-doctor: Codex can run commands" sh -c "docker exec ${NAME} bash -lc codex-doctor | grep -q 'Codex can run commands'"
+check "codex-doctor: no failure about commands" sh -c "! docker exec ${NAME} bash -lc codex-doctor | grep -q 'cannot run any command'"
 check "persist-install --list"           docker exec "${NAME}" bash -lc "persist-install --list"
 check "ha-reload --help"                 docker exec "${NAME}" ha-reload --help
 check "hass-mcp installed"               docker exec "${NAME}" which hass-mcp

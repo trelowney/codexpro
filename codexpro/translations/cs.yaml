@@ -21,12 +21,13 @@ configuration:
       never = neptá se nikdy a dělá všechno sám. "never" volej jen když máš
       zálohy a víš, co děláš.
   file_access:
-    name: Do kterých souborů smí Codex zapisovat
+    name: Co smí Codex dělat se soubory a příkazy
     description: >-
-      workspace = konfigurace Home Assistantu, konfigurace ostatních doplňků,
-      share a media (doporučeno - v praxi to stačí na všechno).
-      full = uvnitř kontejneru bez omezení. Vol jen když ti něco smysluplného
-      brání v práci.
+      full = Codex může spouštět příkazy a měnit soubory všude, kam doplněk
+      vidí (doporučeno; doplněk stejně vidí jen konfiguraci Home Assistantu,
+      konfigurace ostatních doplňků, share, media a addons).
+      workspace = vlastní izolace Codexu navíc; kontejner doplňku v Home
+      Assistantu ji nedovolí, takže doplněk přepne na full a napíše to do logu.
   enable_ha_mcp:
     name: Nechat Codex mluvit přímo s Home Assistantem
     description: >-

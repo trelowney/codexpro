@@ -279,15 +279,54 @@ warm_up_ha_mcp() {
 }
 
 # ---------------------------------------------------------------------------
+# Can Codex run commands in its own sandbox here?
+# ---------------------------------------------------------------------------
+# file_access: workspace makes Codex run every command inside bubblewrap. Home
+# Assistant's add-on container does not allow that ("bwrap: Failed to make /
+# slave: Permission denied"), and then Codex cannot run a single command -
+# not ha-api, not even ls. Try one harmless command the way Codex does; if it
+# fails, fall back to full access (the add-on container itself is the
+# isolation and only sees the mapped folders) and say so.
+SANDBOX_STATUS_FILE="/run/codexpro-sandbox"
+
+workspace_sandbox_works() {
+    local out
+    out="$(cd /homeassistant 2>/dev/null || cd /; timeout 30 codex sandbox \
+        -c 'sandbox_mode="workspace-write"' -- sh -c 'echo codexpro-sandbox-ok' 2>&1)"
+    case "${out}" in
+        *codexpro-sandbox-ok*) return 0 ;;
+    esac
+    printf '%s\n' "${out}" | grep -v 'arg0 temp' | grep -v '^\s*$' | head -n 3 > "${SANDBOX_STATUS_FILE}.error"
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # Codex configuration (~/.codex/config.toml) - merged, never overwritten
 # ---------------------------------------------------------------------------
 setup_codex_config() {
     local model approval file_access enable_mcp api_key
     model="$(config_value 'model' '')"
     approval="$(config_choice 'approval_policy' 'on-request' untrusted on-failure on-request never)"
-    file_access="$(config_choice 'file_access' 'workspace' workspace full)"
+    file_access="$(config_choice 'file_access' 'full' workspace full)"
     enable_mcp="$(config_bool 'enable_ha_mcp' 'true')"
     api_key="$(config_value 'openai_api_key' '')"
+
+    rm -f "${SANDBOX_STATUS_FILE}" "${SANDBOX_STATUS_FILE}.error"
+    if [ "${file_access}" = "workspace" ]; then
+        if workspace_sandbox_works; then
+            echo "workspace" > "${SANDBOX_STATUS_FILE}"
+            bashio::log.info "File access: workspace (Codex's sandbox works here)"
+        else
+            echo "fallback" > "${SANDBOX_STATUS_FILE}"
+            bashio::log.warning "File access 'workspace' cannot work in this container: Codex could not run any command in its sandbox:"
+            while IFS= read -r line; do bashio::log.warning "  ${line}"; done < "${SANDBOX_STATUS_FILE}.error"
+            bashio::log.warning "Using full access instead, so Codex can run commands (ha-api, ls, ...). To stop this message, set 'file_access: full' in the add-on configuration."
+            file_access="full"
+        fi
+    else
+        echo "full" > "${SANDBOX_STATUS_FILE}"
+        bashio::log.info "File access: full"
+    fi
 
     install_agents_md
 
