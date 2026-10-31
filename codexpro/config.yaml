@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.2.2"
+version: "1.3.0"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
@@ -47,12 +47,29 @@ map:
   - type: media
     read_only: false
     path: /media
+  - type: addons
+    read_only: false
+    path: /addons
   - type: ssl
     read_only: true
     path: /ssl
   - type: backup
     read_only: true
     path: /backup
+
+# Left out of Home Assistant backups: ONLY downloaded programs, which come
+# back by themselves. npm = Codex updated from the menu (without it the add-on
+# uses the Codex built into the image until the next codex-update);
+# .cache/npm and .cache/pip = download caches of 1.2.x. Everything else in
+# /data is backed up - sign-in, settings, conversations, the user's own notes
+# and files, uploads. Never add a folder here that a person or Codex might
+# save something into.
+# Supervisor matches these against the full path of the add-on's data folder,
+# which ends in <repository>_codexpro (or local_codexpro).
+backup_exclude:
+  - "*_codexpro/npm"
+  - "*_codexpro/.cache/npm"
+  - "*_codexpro/.cache/pip"
 
 homeassistant_api: true
 hassio_api: true

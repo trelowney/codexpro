@@ -76,6 +76,8 @@ if ! npm install -g "${PKG}@latest" --prefer-online >"${log}" 2>&1; then
     exit 1
 fi
 rm -f "${log}"
+# The download cache lives in /tmp (see run.sh); nothing reuses it
+rm -rf /tmp/npm-cache 2>/dev/null
 hash -r 2>/dev/null
 
 after="$(current_version)"

@@ -37,6 +37,10 @@ Taken from it:
   (`terminal-clipboard.js`), image paste inside the terminal frame, the files
   sidebar (`files-api.mjs`), ingress-only access to the terminal, the
   terminal reset in the menu, and the dependency updates
+- later fixes adopted in 1.3.0: uploading any kind of file (2.3.7), the
+  on-screen keyboard fix for the Home Assistant mobile app (2.3.6), the
+  `/addons` folder (2.3.2) and the Changes tab with its git API
+  (`git-api.mjs`, 2.3.0/2.3.1)
 
 ## What is new here
 

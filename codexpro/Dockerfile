@@ -65,7 +65,9 @@ RUN if ! apk add --no-cache ttyd; then \
 
 # Codex CLI. The npm package ships prebuilt binaries for linux x64/arm64 only,
 # which is why this add-on does not offer armv7/armhf.
-RUN NPM_CONFIG_CACHE=/tmp/npm-cache npm install -g @openai/codex \
+# A minimum version, as for Node.js: a stale cache fails the build instead of
+# shipping an older Codex than the changelog promises.
+RUN NPM_CONFIG_CACHE=/tmp/npm-cache npm install -g "@openai/codex@>=0.166.0" \
     && codex --version \
     && rm -rf /tmp/npm-cache
 
@@ -73,7 +75,8 @@ RUN NPM_CONFIG_CACHE=/tmp/npm-cache npm install -g @openai/codex \
 # One of its dependencies drops a stray pytest launcher at /usr/local/bin/test,
 # which shadows coreutils' /usr/bin/test on PATH and is broken (pytest is not
 # installed). Remove it so `test` keeps meaning what every script expects.
-RUN pip3 install --no-cache-dir --break-system-packages hass-mcp \
+# 0.6.1 is the minimum: it brings mcp 1.30 and the dependency security fixes.
+RUN pip3 install --no-cache-dir --break-system-packages "hass-mcp>=0.6.1" \
     && rm -f /usr/local/bin/test
 
 # Home Assistant CLI
@@ -101,7 +104,7 @@ RUN case "${BUILD_ARCH:-amd64}" in \
     chmod +x /usr/bin/gh && \
     rm -rf /tmp/gh*
 
-# Image paste service (browser -> /data/images -> path pasted into the terminal)
+# File upload service (browser -> /data/uploads -> path pasted into the terminal)
 COPY image-service/ /opt/image-service/
 RUN cd /opt/image-service \
     && npm install --omit=dev --no-optional \

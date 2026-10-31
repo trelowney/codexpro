@@ -689,6 +689,64 @@
         #check-config-result.ok { color: #4ec9b0; }
         #check-config-result.error { color: #f48771; }
 
+        .change-status {
+            width: 14px;
+            flex-shrink: 0;
+            font-weight: 600;
+            font-family: Menlo, Consolas, monospace;
+            text-align: center;
+        }
+
+        .change-status.modified { color: #e2c08d; }
+        .change-status.added { color: #73c991; }
+        .change-status.deleted { color: #f48771; }
+        .change-status.renamed { color: #75beff; }
+
+        .changes-note {
+            color: #aaa;
+            padding: 10px 12px;
+            line-height: 1.5;
+            font-size: 12px;
+        }
+
+        .changes-note button {
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .sidebar-action {
+            background: #007acc;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 7px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .sidebar-action:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        #accept-changes-btn {
+            width: 100%;
+            margin-bottom: 6px;
+            display: none;
+        }
+
+        #accept-changes-btn.confirm,
+        #preview-revert-btn.confirm {
+            background: #d9534f;
+            color: #fff;
+        }
+
+        .diff-line { display: block; }
+        .diff-add { background: rgba(115, 201, 145, 0.15); color: #9fe0b5; }
+        .diff-del { background: rgba(244, 135, 113, 0.15); color: #f8a898; }
+        .diff-hunk { color: #75beff; }
+        .diff-meta { color: #888; }
+
         #preview-modal {
             position: fixed;
             inset: 0;
@@ -782,9 +840,9 @@
                     <span>🎤</span>
                     <span class="btn-label">Voice Input</span>
                 </button>
-                <button id="upload-btn" class="header-btn">
+                <button id="upload-btn" class="header-btn" title="Upload files for Codex - images, PDFs, YAML, logs... (or paste or drop them on the terminal)">
                     <span>📎</span>
-                    <span class="btn-label">Upload Image</span>
+                    <span class="btn-label">Upload</span>
                 </button>
             </div>
         </div>
@@ -792,7 +850,7 @@
             <div id="terminal-container">
                 <iframe id="terminal-frame" src="about:blank"></iframe>
                 <div id="drop-zone">
-                    <div id="drop-zone-text">Drop image here to upload</div>
+                    <div id="drop-zone-text">Drop files here to upload</div>
                 </div>
             </div>
             <div id="sidebar" class="collapsed">
@@ -801,10 +859,12 @@
                     <button class="rail-btn" id="rail-expand" title="Show the sidebar">«</button>
                     <button class="rail-btn" data-open-tab="files" title="Files">📁</button>
                     <button class="rail-btn" data-open-tab="recent" title="Recent changes">🕒</button>
+                    <button class="rail-btn" data-open-tab="changes" title="What changed since the last checkpoint, with undo">±</button>
                 </div>
                 <div id="sidebar-tabs">
                     <button class="sidebar-tab active" data-tab="files">📁 Files</button>
-                    <button class="sidebar-tab" data-tab="recent">🕒 Recent changes</button>
+                    <button class="sidebar-tab" data-tab="recent">🕒 Recent</button>
+                    <button class="sidebar-tab" data-tab="changes" title="What changed since the last checkpoint, with undo">± Changes</button>
                     <button id="sidebar-hide" title="Hide the sidebar">»</button>
                 </div>
                 <div id="sidebar-toolbar">
@@ -818,13 +878,14 @@
                 </div>
                 <div id="sidebar-list"></div>
                 <div id="sidebar-footer">
+                    <button id="accept-changes-btn" class="sidebar-action" title="Save the current state as the new checkpoint (a local git commit, never uploaded anywhere)">✓ Accept all changes</button>
                     <button id="check-config-btn" title="Run Home Assistant's configuration check (ha core check)">✓ Check HA configuration</button>
                     <div id="check-config-result"></div>
                 </div>
             </div>
         </div>
     </div>
-    <input type="file" id="file-input" accept="image/*">
+    <input type="file" id="file-input" multiple>
 
     <!-- File preview (read-only) -->
     <div id="preview-modal">
@@ -835,6 +896,7 @@
             <div class="modal-buttons">
                 <button id="preview-insert-btn" class="modal-btn modal-btn-primary" title="Type the path at the terminal prompt">Insert path</button>
                 <button id="preview-copy-btn" class="modal-btn modal-btn-secondary">Copy path</button>
+                <button id="preview-revert-btn" class="modal-btn modal-btn-secondary" style="display: none;" title="Put this file back as it was at the last checkpoint">↩ Revert file</button>
                 <button id="preview-close-btn" class="modal-btn modal-btn-secondary">Close</button>
             </div>
         </div>
@@ -882,7 +944,7 @@
     <script src="terminal-clipboard.js"></script>
     <script>
         let ttydPort = 7681;
-        let uploadDir = '/data/images';
+        let uploadDir = '/data/uploads';
 
         // Fetch configuration and load ttyd
         // Use relative paths for Home Assistant ingress compatibility
@@ -934,7 +996,7 @@
                     if (type) {
                         const blob = await item.getType(type);
                         const ext = type.split('/')[1].replace('svg+xml', 'svg');
-                        await uploadImage(new File([blob], `pasted.${ext}`, { type }));
+                        await uploadFile(new File([blob], `pasted.${ext}`, { type }));
                         return;
                     }
                 }
@@ -951,7 +1013,8 @@
             }
         }
 
-        // Intercept image pastes inside the terminal frame before xterm.js does.
+        // Intercept file pastes (images, or files copied in Finder/Explorer)
+        // inside the terminal frame before xterm.js does.
         // Text pastes are left alone so xterm handles them (incl. bracketed paste).
         function installImagePaste(iframe) {
             let win;
@@ -973,17 +1036,32 @@
                 await pasteFromAsyncClipboard(win);
             }, true);
             win.addEventListener('paste', async (e) => {
-                const items = e.clipboardData?.items;
-                if (!items) return;
-                for (const item of items) {
-                    if (item.kind === 'file' && item.type.startsWith('image/')) {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        const file = item.getAsFile();
-                        if (file) await uploadImage(file);
-                        return;
-                    }
-                }
+                const files = pastedFiles(e);
+                if (!files.length) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                await uploadFiles(files);
+            }, true);
+
+            // Drags over the terminal reach this frame, not the page, and the
+            // browser's default for a drop is to open the file in a new tab.
+            const dragsFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+            win.addEventListener('dragover', (e) => {
+                if (!dragsFiles(e)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                dropZone.classList.add('active');
+            }, true);
+            win.addEventListener('dragleave', (e) => {
+                // Null when the drag leaves the frame, not just an element in it
+                if (!e.relatedTarget) dropZone.classList.remove('active');
+            }, true);
+            win.addEventListener('drop', async (e) => {
+                if (!dragsFiles(e)) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                dropZone.classList.remove('active');
+                await uploadFiles(Array.from(e.dataTransfer.files));
             }, true);
         }
 
@@ -1023,14 +1101,30 @@
             }
         }
 
-        async function uploadImage(file) {
-            if (!file || !file.type.startsWith('image/')) {
-                setStatus('Please select an image file', 'error');
-                return;
+        // Files on the clipboard. A copied image, or files copied in Finder or
+        // Explorer (Safari and recent Chrome/Edge). Text pastes return none.
+        function pastedFiles(e) {
+            const items = e.clipboardData?.items;
+            if (!items) return [];
+            return Array.from(items)
+                .filter(item => item.kind === 'file')
+                .map(item => item.getAsFile())
+                .filter(Boolean);
+        }
+
+        // One at a time; each path is typed at the prompt as it lands.
+        // A failed file does not stop the rest.
+        async function uploadFiles(files) {
+            for (const file of files) {
+                await uploadFile(file);
             }
+        }
+
+        async function uploadFile(file) {
+            if (!file) return;
 
             const formData = new FormData();
-            formData.append('image', file);
+            formData.append('file', file);
 
             uploadBtn.innerHTML = '<span class="spinner"></span><span class="btn-label">Uploading...</span>';
             uploadBtn.disabled = true;
@@ -1062,7 +1156,7 @@
 
                     // Display full path persistently with click-to-copy functionality
                     setStatus(`📋 ${filePath} (click to select)`, 'success', true);
-                    console.log('Image uploaded:', filePath);
+                    console.log('File uploaded:', filePath);
 
                     // Make status clickable to select text (works in iframes)
                     status.style.cursor = 'pointer';
@@ -1134,9 +1228,13 @@
                 }
             } catch (error) {
                 console.error('Upload error:', error);
-                setStatus('Upload failed: ' + error.message, 'error');
+                // fetch itself throws only when the add-on could not be reached
+                const hint = error instanceof TypeError
+                    ? 'the add-on did not answer - check that Home Assistant is reachable, then try 📎 again'
+                    : error.message;
+                setStatus(`Upload of ${file.name || 'the file'} failed: ${hint}`, 'error', true);
             } finally {
-                uploadBtn.innerHTML = '<span>📎</span><span class="btn-label">Upload Image</span>';
+                uploadBtn.innerHTML = '<span>📎</span><span class="btn-label">Upload</span>';
                 uploadBtn.disabled = false;
             }
         }
@@ -1147,38 +1245,19 @@
         });
 
         // File input change
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                uploadImage(e.target.files[0]);
-            }
+        fileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            // Choosing the same file again must still fire change
+            e.target.value = '';
+            await uploadFiles(files);
         });
 
         // Paste handling
         document.addEventListener('paste', async (e) => {
-            console.log('Paste event detected');
-            const items = e.clipboardData?.items;
-
-            if (!items) {
-                console.log('No clipboard items found');
-                return;
-            }
-
-            console.log('Clipboard items:', Array.from(items).map(i => i.type));
-
-            for (let item of items) {
-                if (item.type.startsWith('image/')) {
-                    console.log('Image found in clipboard:', item.type);
-                    e.preventDefault();
-                    const file = item.getAsFile();
-                    if (file) {
-                        console.log('File extracted from clipboard:', file.name, file.size);
-                        await uploadImage(file);
-                    } else {
-                        console.error('Failed to extract file from clipboard item');
-                    }
-                    break;
-                }
-            }
+            const files = pastedFiles(e);
+            if (!files.length) return;
+            e.preventDefault();
+            await uploadFiles(files);
         });
 
         // Also handle paste on window for better compatibility
@@ -1215,15 +1294,8 @@
             dragCounter = 0;
             dropZone.classList.remove('active');
 
-            const files = e.dataTransfer?.files;
-            if (files && files.length > 0) {
-                const file = files[0];
-                if (file.type.startsWith('image/')) {
-                    await uploadImage(file);
-                } else {
-                    setStatus('Please drop an image file', 'error');
-                }
-            }
+            const files = Array.from(e.dataTransfer?.files || []);
+            await uploadFiles(files);
         });
 
         // Insert the uploaded path at the prompt via xterm's own paste API.
@@ -1413,6 +1485,33 @@
         // ignores it, so follow the visual viewport as well; shrinking the
         // container makes the iframe fire resize and ttyd refits.
 
+        //
+        // Inside Home Assistant this page is the ingress iframe, and on iOS the
+        // keyboard shrinks only the top window's visual viewport; the iframe's
+        // own stays full height, so nothing moved until a keystroke made iOS
+        // scroll. Ingress is same-origin, so follow the top window's viewport
+        // too and keep to the part of this frame above the keyboard.
+        // (Adapted from esjavadex/claude-code-ha 2.3.6, MIT.)
+
+        // The top window and where this frame starts in it, or null when this
+        // page is the top window or a parent is cross-origin.
+        function outerViewport() {
+            try {
+                let win = window;
+                let frameTop = 0;
+                while (win.parent !== win) {
+                    const frame = win.frameElement;
+                    if (!frame) return null;
+                    frameTop += frame.getBoundingClientRect().top;
+                    win = win.parent;
+                }
+                if (win === window || !win.visualViewport) return null;
+                return { win, viewport: win.visualViewport, frameTop };
+            } catch (e) {
+                return null;
+            }
+        }
+
         function trackOnScreenKeyboard() {
             const viewport = window.visualViewport;
             const container = document.getElementById('container');
@@ -1420,10 +1519,25 @@
 
             let settle;
 
+            const visibleHeight = () => {
+                let height = viewport.height;
+                const outer = outerViewport();
+                // Only while the keyboard (or a pinch-zoom) has made the top
+                // viewport shorter than the top window. Otherwise this frame may
+                // just be a dashboard card scrolled partly off screen, and
+                // clamping would cut it to what was visible at load.
+                if (outer && outer.viewport.height < outer.win.innerHeight - 1) {
+                    const bottom = outer.viewport.offsetTop + outer.viewport.height;
+                    height = Math.min(height, bottom - outer.frameTop);
+                }
+                return height;
+            };
+
             const apply = () => {
+                const height = visibleHeight();
                 // A bogus height would collapse the terminal entirely.
-                if (viewport.height < 120) return;
-                container.style.height = viewport.height + 'px';
+                if (height < 120) return;
+                container.style.height = height + 'px';
                 // iOS pans the layout viewport when an input takes focus.
                 window.scrollTo(0, 0);
 
@@ -1440,6 +1554,11 @@
 
             viewport.addEventListener('resize', apply);
             viewport.addEventListener('scroll', apply);
+            const outer = outerViewport();
+            if (outer) {
+                outer.viewport.addEventListener('resize', apply);
+                outer.viewport.addEventListener('scroll', apply);
+            }
             apply();
         }
 
@@ -1886,15 +2005,205 @@
                 }
             }
 
+            const acceptBtn = document.getElementById('accept-changes-btn');
+            const revertBtn = document.getElementById('preview-revert-btn');
+            let diffPath = null;
+            let revertArmed = null;
+            let acceptArmed = null;
+            let changesRemotes = [];
+
+            async function postJson(url) {
+                const res = await fetch(url, { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok && data.ok === undefined) throw new Error(data.error || res.statusText);
+                return data;
+            }
+
+            async function renderChanges() {
+                list.replaceChildren(emptyRow('Loading…'));
+                acceptBtn.style.display = 'none';
+                disarmAccept();
+                let data;
+                try {
+                    data = await getJson('api/git/status');
+                } catch (err) {
+                    list.replaceChildren(emptyRow('⚠️ ' + err.message + ' - press ↻ to try again'));
+                    return;
+                }
+                if (currentTab !== 'changes') return;
+                list.replaceChildren();
+                if (!data.repo) {
+                    const note = document.createElement('div');
+                    note.className = 'changes-note';
+                    note.append(
+                        'Track changes in ' + data.configDir + ' to see exactly what Codex edits, line by line, and undo any file.',
+                        document.createElement('br'), document.createElement('br'),
+                        'This creates a local git repository there and saves the current state as the starting point. Nothing is uploaded anywhere. secrets.yaml, .storage, databases and logs are left out.'
+                    );
+                    const start = document.createElement('button');
+                    start.className = 'sidebar-action';
+                    start.textContent = 'Start tracking changes';
+                    start.addEventListener('click', async () => {
+                        if (start.dataset.busy) return;
+                        start.dataset.busy = '1';
+                        start.disabled = true;
+                        start.textContent = 'Setting up… (can take a minute)';
+                        try {
+                            const r = await postJson('api/git/init');
+                            setStatus((r.ok ? '✅ ' : '❌ ') + r.message + (r.ok ? '' : ' - press ↻ and try again'), r.ok ? 'success' : 'error', !r.ok);
+                        } catch (err) {
+                            setStatus('❌ ' + err.message + ' - press ↻ and try again', 'error', true);
+                        }
+                        renderChanges();
+                    });
+                    note.append(start);
+                    list.append(note);
+                    return;
+                }
+                if (data.error) {
+                    list.append(emptyRow('⚠️ ' + data.error + ' - press ↻ to try again'));
+                    return;
+                }
+                changesRemotes = data.remotes || [];
+                if (data.lastCheckpoint) {
+                    const since = emptyRow('Since checkpoint ' + formatAgo(data.lastCheckpoint.time));
+                    since.title = data.lastCheckpoint.subject;
+                    list.append(since);
+                }
+                if (!data.files.length) {
+                    list.append(emptyRow('No changes since then'));
+                    return;
+                }
+                acceptBtn.style.display = 'block';
+                const letters = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R' };
+                const words = { modified: 'changed', added: 'new', deleted: 'deleted', renamed: 'renamed' };
+                for (const file of data.files) {
+                    const row = document.createElement('div');
+                    row.className = 'tree-row';
+                    row.title = file.path + ' (' + (words[file.status] || file.status) + ') - click to see what changed';
+                    const status = document.createElement('span');
+                    status.className = 'change-status ' + file.status;
+                    status.textContent = letters[file.status] || '?';
+                    const name = document.createElement('span');
+                    name.className = 'tree-name';
+                    name.textContent = file.path;
+                    row.append(status, name);
+                    row.addEventListener('click', () => { select(row); openDiff(file.path); });
+                    list.append(row);
+                }
+            }
+
+            // Colour a unified diff line by line, as text nodes only
+            function renderDiff(diff) {
+                const frag = document.createDocumentFragment();
+                for (const line of diff.split('\n')) {
+                    const span = document.createElement('span');
+                    span.className = 'diff-line';
+                    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file')) span.classList.add('diff-meta');
+                    else if (line.startsWith('+')) span.classList.add('diff-add');
+                    else if (line.startsWith('-')) span.classList.add('diff-del');
+                    else if (line.startsWith('@@')) span.classList.add('diff-hunk');
+                    span.textContent = line || ' ';
+                    frag.append(span);
+                }
+                return frag;
+            }
+
+            function disarmRevert() {
+                clearTimeout(revertArmed);
+                revertArmed = null;
+                revertBtn.classList.remove('confirm');
+                revertBtn.textContent = '↩ Revert file';
+            }
+
+            function disarmAccept() {
+                clearTimeout(acceptArmed);
+                acceptArmed = null;
+                acceptBtn.classList.remove('confirm');
+                acceptBtn.textContent = '✓ Accept all changes';
+            }
+
+            async function openDiff(relativePath) {
+                diffPath = relativePath;
+                disarmRevert();
+                revertBtn.style.display = '';
+                previewPath = null;
+                previewTitle.textContent = relativePath;
+                previewMeta.textContent = 'Changes since the last checkpoint (red = removed, green = added)';
+                previewBody.textContent = 'Loading…';
+                previewModal.classList.add('active');
+                try {
+                    const data = await getJson('api/git/diff?path=' + encodeURIComponent(relativePath));
+                    previewPath = data.fullPath;
+                    previewBody.replaceChildren();
+                    if (data.binary) previewBody.textContent = '(binary file changed - no line-by-line view)';
+                    else if (!data.diff.trim()) previewBody.textContent = '(no differences)';
+                    else previewBody.append(renderDiff(data.diff));
+                    if (data.truncated) previewMeta.textContent += ' · showing the first 512 KB';
+                } catch (err) {
+                    previewBody.textContent = '⚠️ ' + err.message + '\n\nClose this window, press ↻ in the sidebar and open the file again.';
+                }
+            }
+
+            revertBtn.addEventListener('click', async () => {
+                if (!diffPath) return;
+                // Two clicks: the first arms it, the second within 4 s reverts
+                if (!revertArmed) {
+                    revertBtn.classList.add('confirm');
+                    revertBtn.textContent = 'Click again to revert';
+                    revertArmed = setTimeout(disarmRevert, 4000);
+                    return;
+                }
+                disarmRevert();
+                try {
+                    const r = await postJson('api/git/revert?path=' + encodeURIComponent(diffPath));
+                    setStatus((r.ok ? '↩ ' : '❌ ') + r.message, r.ok ? 'success' : 'error', !r.ok);
+                    if (r.ok) closePreview();
+                } catch (err) {
+                    setStatus('❌ ' + err.message + ' - close the window, press ↻ and try again', 'error', true);
+                }
+                if (currentTab === 'changes') renderChanges();
+            });
+
+            acceptBtn.addEventListener('click', async () => {
+                if (acceptBtn.disabled) return;
+                if (!acceptArmed) {
+                    acceptBtn.classList.add('confirm');
+                    acceptBtn.textContent = changesRemotes.length
+                        ? 'This folder is synced with ' + changesRemotes.join(', ') + ' - click again to save a local checkpoint anyway'
+                        : 'Click again to accept';
+                    acceptArmed = setTimeout(disarmAccept, changesRemotes.length ? 8000 : 4000);
+                    return;
+                }
+                disarmAccept();
+                acceptBtn.disabled = true;
+                acceptBtn.textContent = 'Saving checkpoint…';
+                try {
+                    const r = await postJson('api/git/checkpoint');
+                    setStatus((r.ok ? '✅ ' : '❌ ') + r.message + (r.ok ? '' : ' - press ↻ and try again'), r.ok ? 'success' : 'error', !r.ok);
+                } catch (err) {
+                    setStatus('❌ ' + err.message + ' - press ↻ and try again', 'error', true);
+                } finally {
+                    acceptBtn.disabled = false;
+                    disarmAccept();
+                    renderChanges();
+                }
+            });
+
             function refresh() {
                 hiddenToggle.style.display = currentTab === 'files' ? '' : 'none';
                 recentHours.style.display = currentTab === 'recent' ? '' : 'none';
+                acceptBtn.style.display = 'none';
                 if (currentTab === 'files') renderFolder(rootPath, list, 0);
-                else renderRecent();
+                else if (currentTab === 'recent') renderRecent();
+                else renderChanges();
             }
 
             async function openPreview(filePath) {
                 previewPath = filePath;
+                diffPath = null;
+                disarmRevert();
+                revertBtn.style.display = 'none';
                 previewTitle.textContent = filePath;
                 previewMeta.textContent = '';
                 previewBody.textContent = 'Loading…';

@@ -55,7 +55,7 @@ else
     warn "/config is not the usual shortcut." "Use /homeassistant in your instructions to Codex."
 fi
 
-for extra in /addon_configs /share /media; do
+for extra in /addon_configs /share /media /addons; do
     if [ -d "${extra}" ]; then
         ok "${extra} is available"
     else

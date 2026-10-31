@@ -73,7 +73,7 @@ init_environment() {
         "${DATA_ROOT}/.cache" \
         "${DATA_ROOT}/.local/state" \
         "${DATA_ROOT}/.local/share" \
-        "${DATA_ROOT}/images" \
+        "${DATA_ROOT}/uploads" \
         "${NPM_ROOT}/bin" \
         "${PERSIST_ROOT}/bin" \
         "${PERSIST_ROOT}/lib" \
@@ -89,7 +89,8 @@ init_environment() {
     export XDG_DATA_HOME="${DATA_ROOT}/.local/share"
     export GH_CONFIG_DIR="${DATA_ROOT}/.config/gh"
     export NPM_CONFIG_PREFIX="${NPM_ROOT}"
-    export NPM_CONFIG_CACHE="${DATA_ROOT}/.cache/npm"
+    export NPM_CONFIG_CACHE="/tmp/npm-cache"
+    export PIP_NO_CACHE_DIR=1
     export PATH="${NPM_ROOT}/bin:${PERSIST_ROOT}/bin:${PERSIST_ROOT}/python/venv/bin:${DATA_HOME}/.local/bin:${PATH}"
     export LD_LIBRARY_PATH="${PERSIST_ROOT}/lib:${LD_LIBRARY_PATH:-}"
     export PKG_CONFIG_PATH="${PERSIST_ROOT}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
@@ -97,7 +98,7 @@ init_environment() {
     # Codex refuses to run as root unless it is told it is inside a sandboxed
     # container. In an HA add-on the container *is* the sandbox.
     export IS_SANDBOX=1
-    export CODEX_UPLOAD_DIR="${DATA_ROOT}/images"
+    export CODEX_UPLOAD_DIR="${DATA_ROOT}/uploads"
 
     if [ -d "${PERSIST_ROOT}/python/venv" ]; then
         export VIRTUAL_ENV="${PERSIST_ROOT}/python/venv"
@@ -114,12 +115,13 @@ export XDG_STATE_HOME="${DATA_ROOT}/.local/state"
 export XDG_DATA_HOME="${DATA_ROOT}/.local/share"
 export GH_CONFIG_DIR="${DATA_ROOT}/.config/gh"
 export NPM_CONFIG_PREFIX="${NPM_ROOT}"
-export NPM_CONFIG_CACHE="${DATA_ROOT}/.cache/npm"
+export NPM_CONFIG_CACHE="/tmp/npm-cache"
+export PIP_NO_CACHE_DIR=1
 export PATH="${NPM_ROOT}/bin:${PERSIST_ROOT}/bin:${PERSIST_ROOT}/python/venv/bin:${DATA_HOME}/.local/bin:\${PATH}"
 export LD_LIBRARY_PATH="${PERSIST_ROOT}/lib:\${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="${PERSIST_ROOT}/lib/pkgconfig:\${PKG_CONFIG_PATH:-}"
 export IS_SANDBOX=1
-export CODEX_UPLOAD_DIR="${DATA_ROOT}/images"
+export CODEX_UPLOAD_DIR="${DATA_ROOT}/uploads"
 export TERM=xterm-256color
 [ -d "${PERSIST_ROOT}/python/venv" ] && export VIRTUAL_ENV="${PERSIST_ROOT}/python/venv"
 
@@ -138,6 +140,19 @@ BASHRC_EOF
 }
 
 # ---------------------------------------------------------------------------
+# Keep /data small: it goes into every Home Assistant backup
+# ---------------------------------------------------------------------------
+# Before 1.3.0 the npm and pip caches lived in /data/.cache and grew with every
+# Codex update. They now live in /tmp (gone on restart), so delete the old ones.
+# NOTHING ELSE is ever deleted here: people keep notes and saved conversations
+# in /data (and uploads may be the only copy of something), so user files are
+# never pruned, whatever their age or folder.
+tidy_data() {
+    rm -rf "${DATA_ROOT}/.cache/npm" "${DATA_ROOT}/.cache/pip" 2>/dev/null || true
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # /config -> /homeassistant, so both path habits work
 # ---------------------------------------------------------------------------
 setup_config_alias() {
@@ -145,7 +160,7 @@ setup_config_alias() {
     # between Supervisor generations, so this is checked instead of assumed -
     # and it is the first thing to look at when Codex says a file is missing.
     local folder found=""
-    for folder in /homeassistant /addon_configs /share /media /ssl /backup; do
+    for folder in /homeassistant /addon_configs /share /media /addons /ssl /backup; do
         [ -d "${folder}" ] && found="${found} ${folder}"
     done
     bashio::log.info "Mapped folders:${found:- none}"
@@ -178,6 +193,7 @@ setup_codex_cli() {
         bashio::log.info "auto_update_codex is on - updating @openai/codex in ${NPM_ROOT}..."
         if npm install -g @openai/codex@latest --prefer-online >/tmp/codex-update.log 2>&1; then
             bashio::log.info "Codex CLI updated"
+            rm -rf /tmp/npm-cache 2>/dev/null || true
         else
             bashio::log.warning "Codex CLI update failed - keeping the version baked into the image."
             bashio::log.warning "You can retry later from the terminal with:  codex-update"
@@ -314,9 +330,15 @@ own instructions in `/config/AGENTS.md` (equivalently `/homeassistant/AGENTS.md`
 | `/addon_configs` | configuration folders of other add-ons | read-write |
 | `/share` | shared folder | read-write |
 | `/media` | media folder | read-write |
+| `/addons` | local add-ons (for writing your own add-on) | read-write |
 | `/ssl` | certificates | read-only |
 | `/backup` | backups | read-only |
 | `/data` | this add-on's own persistent state | read-write |
+| `/data/uploads` | files the user uploaded in the panel (📎, paste, drag-and-drop) | read-write |
+
+When the user gives you a path in `/data/uploads`, read that file; it can be
+an image, a PDF, YAML, a log or anything else. Uploads are kept and backed
+up; never delete files in `/data` you did not create yourself for a task.
 
 In HA Core documentation the config folder is called `/config`; here both
 `/config` and `/homeassistant` point at the same place, so either works.
@@ -487,7 +509,7 @@ port_is_published() {
 start_image_service() {
     export IMAGE_SERVICE_PORT="${WEB_PORT}"
     export TTYD_PORT="${TTYD_PORT}"
-    export UPLOAD_DIR="${DATA_ROOT}/images"
+    export UPLOAD_DIR="${DATA_ROOT}/uploads"
 
     # The web interface is a root shell with no login of its own. Unless its
     # port has been published on purpose, it only accepts the Supervisor's
@@ -551,6 +573,7 @@ start_terminal() {
 main() {
     bashio::log.info "Codex Pro starting..."
     init_environment
+    tidy_data
     setup_config_alias
     setup_ha_access
     setup_codex_cli

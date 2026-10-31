@@ -50,7 +50,11 @@ Three separate things:
   out-of-date one is the usual reason Codex "cannot" do something with
   dashboards. `mcp-update --check` tells you where you stand.
 
-Updates are stored in `/data` and survive restarts. If an update ever installs
+Updates are stored in `/data` and survive restarts. Home Assistant backups
+leave out only the updated Codex and download caches (they can always be
+downloaded again), which keeps them small - your conversations, notes and
+files in `/data` are always backed up and never deleted; after restoring a backup the add-on uses the Codex built into it
+until the next `codex-update` or automatic update. If an update ever installs
 something broken, both commands detect it, roll back to the version built into
 the add-on, and tell you — the add-on does not end up unusable.
 
@@ -97,16 +101,24 @@ covers what you asked for.
 | `/homeassistant` and `/config` | Home Assistant configuration (same folder) | read-write |
 | `/addon_configs` | other add-ons' configuration | read-write |
 | `/share`, `/media` | shared folders | read-write |
+| `/addons` | local add-ons (your own add-on sources) | read-write |
 | `/ssl`, `/backup` | certificates, backups | read-only |
 | `/data` | this add-on's own storage (sign-in, sessions, updates) | read-write |
+| `/data/uploads` | files you upload in the web interface | read-write |
 
-## Images
+## Uploading files
 
-Paste (Ctrl+V or Cmd+V), drag, or pick an image with 📎 in the web interface.
-It is saved to `/data/images` and its path is typed at the prompt, so you can
-ask Codex about a screenshot of your dashboard. Pasting works while the cursor
-is in the terminal too. Ctrl+V always pastes from your computer's clipboard
-(text or image); it is no longer passed on to programs in the terminal.
+Paste (Ctrl+V or Cmd+V), drag, or pick files with 📎 **Upload** in the web
+interface - a screenshot, a YAML file, a PDF manual, a log, anything up to
+50 MB, several at once. Each one is saved to `/data/uploads` and its path is
+typed at the prompt, so you can ask Codex about it. Pasting and dropping work
+while the cursor is in the terminal too. Ctrl+V always pastes from your
+computer's clipboard (text or file); it is no longer passed on to programs in
+the terminal.
+
+Uploads are kept and included in Home Assistant backups. For anything bigger
+than 50 MB, put it in `/share` (for example with the Samba add-on) and give
+Codex that path.
 
 ## Copying text out of the terminal
 
@@ -133,9 +145,16 @@ still works there because it is a click.
   first. Handy for seeing what Codex just edited.
 - **✓ Check HA configuration** — runs Home Assistant's configuration check and
   shows the result.
+- **± Changes** — what changed in the configuration folder since you last
+  accepted it, file by file, with the exact lines added and removed. Click
+  **Start tracking changes** once; it creates a local git repository in the
+  configuration folder (nothing is uploaded anywhere). **↩ Revert file** puts one
+  file back (click twice to confirm); **✓ Accept all changes** marks the current
+  state as the new starting point. `secrets.yaml`, `.storage` and other
+  sensitive files are never tracked or shown.
 
-The sidebar never changes a file. Drag its left edge to resize it; » hides it
-to a thin rail. It remembers whether it was open and how wide.
+Apart from ↩ Revert file in ± Changes, the sidebar never changes a file.
+Drag its left edge to resize it; » hides it to a thin rail. It remembers whether it was open and how wide.
 
 ## Security
 

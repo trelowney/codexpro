@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.3.0] - 2026-10-31
+
+Upload any file, see and undo what changed, smaller backups.
+
+### Added
+
+- **Upload any file**, not just images: 📎 Upload (several at once), paste or
+  drop a YAML file, PDF, log or anything else up to 50 MB. Files go to
+  `/data/uploads` and their path is typed at the prompt. A file that is too
+  big gets advice on what to do instead
+- **± Changes** in the files sidebar: what changed in the configuration folder
+  since you last accepted it, with the lines added and removed; revert one
+  file or accept everything. Uses a local git repository in the configuration
+  folder; `secrets.yaml`, `.storage` and other sensitive files are never
+  tracked or shown
+- **`/addons`** (local add-ons) is now available to Codex, read-write
+
+### Changed
+
+- **Smaller Home Assistant backups**: only downloaded programs are left out -
+  the Codex update and the npm/pip download caches, which no longer live in
+  `/data` at all (the 1.2.x ones are removed at start). Your conversations,
+  notes, uploads and settings stay in every backup and are never deleted.
+  After restoring a backup the Codex built into the add-on is used until the
+  next update
+- Codex CLI 0.166.0 (was 0.164.0)
+- Home Assistant MCP server `hass-mcp` 0.6.1 (was 0.6.0)
+
+### Fixed
+
+- In the Home Assistant mobile app the on-screen keyboard no longer covers the
+  prompt
+
 ## [1.2.2] - 2026-10-24
 
 ### Security

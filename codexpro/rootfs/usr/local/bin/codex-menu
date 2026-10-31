@@ -106,6 +106,8 @@ show_help() {
     /config  and  /homeassistant   -> the same Home Assistant folder
     /addon_configs                 -> configuration of other add-ons
     /share, /media                 -> shared folders
+    /addons                        -> local add-ons (your own add-ons)
+    /data/uploads                  -> files you uploaded with 📎
     /ssl, /backup                  -> read-only
 
   After Codex changes something:

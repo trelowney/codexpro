@@ -77,6 +77,7 @@ add-on updates.
 | `/homeassistant`, `/config` | Home Assistant configuration (same folder) | read-write |
 | `/addon_configs` | other add-ons' configuration | read-write |
 | `/share`, `/media` | shared folders | read-write |
+| `/addons` | local add-ons (your own add-on sources) | read-write |
 | `/ssl`, `/backup` | certificates, backups | read-only |
 | `/data` | this add-on's persistent state | read-write |
 

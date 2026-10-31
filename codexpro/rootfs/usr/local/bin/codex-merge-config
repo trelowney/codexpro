@@ -35,7 +35,7 @@ INVALID_PROJECT_TABLE_RE = re.compile(r"^\[projects\.(\/[^\]]+)\]$")
 
 MCP_COMMAND = "/usr/local/bin/hass-mcp-wrapper"
 MCP_STARTUP_TIMEOUT_SEC = 60
-WRITABLE_ROOTS = ["/homeassistant", "/addon_configs", "/share", "/media", "/data"]
+WRITABLE_ROOTS = ["/homeassistant", "/addon_configs", "/share", "/media", "/addons", "/data"]
 SANDBOX_MODES = {"workspace": "workspace-write", "full": "danger-full-access"}
 APPROVAL_POLICIES = {"untrusted", "on-failure", "on-request", "never"}
 
