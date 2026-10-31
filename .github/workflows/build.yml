@@ -25,7 +25,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read add-on version
         id: version
@@ -59,7 +59,24 @@ jobs:
       matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Build machine
+        shell: bash
+        run: |
+          cpu="$(lscpu | sed -nE 's/^Model name:[[:space:]]+//p' | head -n1)"
+          {
+            echo "### Build machine (${{ matrix.arch }})"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Runner | ${RUNNER_NAME} (${RUNNER_ENVIRONMENT:-unknown}) |"
+            echo "| Runner image | ${ImageOS:-?} ${ImageVersion:-?} |"
+            echo "| System | $(. /etc/os-release && echo "${PRETTY_NAME}"), kernel $(uname -r) |"
+            echo "| CPU | ${cpu:-unknown} ($(uname -m), $(nproc) cores) |"
+            echo "| RAM | $(free -h | awk '/^Mem:/ {print $2}') |"
+            echo "| Free disk | $(df -h --output=avail / | tail -n1 | tr -d ' ') |"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
 
       - name: Select Home Assistant base image
         id: base
