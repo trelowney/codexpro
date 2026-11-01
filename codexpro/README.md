@@ -47,6 +47,8 @@ Three things about the existing Codex add-on made it painful. All three are fixe
 - **`persist-install`** — extra Alpine and Python packages that survive restarts.
 - **Image paste** — paste or drop a screenshot into the web interface and ask
   about it, even while the cursor is in the terminal.
+- **Dictation** — 🎤 speak instead of typing, through your Home Assistant
+  speech-to-text engine (any browser, the HA app too) or the browser's own.
 - **Copy that works** — mouse selection, a 📋 button for phones and tablets,
   and one-tap copying of the link on screen.
 - **Files sidebar** — browse and preview the configuration, see what changed

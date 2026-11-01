@@ -93,6 +93,8 @@ covers what you asked for.
 | `tmux_mouse` | Mouse in the terminal; hold Shift to select text for copying |
 | `persistent_apk_packages` | Alpine packages reinstalled after every restart |
 | `persistent_pip_packages` | Python packages reinstalled after every restart |
+| `voice_stt_provider` | Optional. Home Assistant speech-to-text engine for 🎤 Voice Input, for example `stt.faster_whisper`. Empty = the browser's own speech recognition |
+| `voice_language` | Language you dictate in, for example `cs` or `de-DE`. Empty = the browser's language |
 
 ## Folders
 
@@ -119,6 +121,31 @@ the terminal.
 Uploads are kept and included in Home Assistant backups. For anything bigger
 than 50 MB, put it in `/share` (for example with the Samba add-on) and give
 Codex that path.
+
+## Dictating (🎤 Voice Input)
+
+🎤 **Voice Input** in the header opens a window: press **Start Recording**,
+speak, press **Stop Recording**. Check the text (you can edit it in the box),
+then **Insert in Terminal** - it is typed at the prompt as one line, and you
+press Enter yourself. **Copy Text** copies it instead.
+
+Two ways of turning speech into text:
+
+- **Home Assistant speech-to-text** (recommended, works in every browser
+  including Firefox and the Home Assistant app): in the add-on Configuration
+  fill in **Speech-to-text engine** with the engine's entity ID, for example
+  `stt.faster_whisper` (local Whisper) or `stt.home_assistant_cloud` (Nabu
+  Casa). Settings > Voice assistants shows which engines you have. Restart the
+  add-on afterwards.
+- **The browser's own speech recognition** when the option is empty (Chrome,
+  Edge, Safari; not Firefox). The browser may send the audio to its vendor.
+
+The microphone only works when Home Assistant is opened over **HTTPS** (an
+address starting with `https://`), and the browser or the app must be allowed
+to use it. One recording is at most 60 seconds. It stays in memory, goes only
+to the configured Home Assistant engine and is never saved or logged; the
+add-on's Home Assistant token never reaches the browser. If something is
+missing, the window says what to do.
 
 ## Copying text out of the terminal
 

@@ -92,7 +92,11 @@ init_environment() {
     export NPM_CONFIG_CACHE="/tmp/npm-cache"
     export PIP_NO_CACHE_DIR=1
     export PATH="${NPM_ROOT}/bin:${PERSIST_ROOT}/bin:${PERSIST_ROOT}/python/venv/bin:${DATA_HOME}/.local/bin:${PATH}"
-    export LD_LIBRARY_PATH="${PERSIST_ROOT}/lib:${LD_LIBRARY_PATH:-}"
+    # The system's own libraries come first: /data/packages/lib holds copies made
+    # by persist-install on an older Alpine release and must never shadow the
+    # current ones (that would break tmux, git, node...). It only supplies
+    # libraries the system does not have.
+    export LD_LIBRARY_PATH="/lib:/usr/lib:/usr/local/lib:${PERSIST_ROOT}/lib"
     export PKG_CONFIG_PATH="${PERSIST_ROOT}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
     # Codex refuses to run as root unless it is told it is inside a sandboxed
@@ -118,7 +122,7 @@ export NPM_CONFIG_PREFIX="${NPM_ROOT}"
 export NPM_CONFIG_CACHE="/tmp/npm-cache"
 export PIP_NO_CACHE_DIR=1
 export PATH="${NPM_ROOT}/bin:${PERSIST_ROOT}/bin:${PERSIST_ROOT}/python/venv/bin:${DATA_HOME}/.local/bin:\${PATH}"
-export LD_LIBRARY_PATH="${PERSIST_ROOT}/lib:\${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="/lib:/usr/lib:/usr/local/lib:${PERSIST_ROOT}/lib"
 export PKG_CONFIG_PATH="${PERSIST_ROOT}/lib/pkgconfig:\${PKG_CONFIG_PATH:-}"
 export IS_SANDBOX=1
 export CODEX_UPLOAD_DIR="${DATA_ROOT}/uploads"
@@ -496,6 +500,8 @@ setup_persistent_packages() {
     apk_packages="$(normalize_config_list "$(config_value 'persistent_apk_packages' '')")"
     pip_packages="$(normalize_config_list "$(config_value 'persistent_pip_packages' '')")"
 
+    note_alpine_release_change
+
     if [ -n "${apk_packages}" ]; then
         bashio::log.info "Installing persistent system packages from the configuration..."
         while IFS= read -r package; do
@@ -516,6 +522,23 @@ setup_persistent_packages() {
                 bashio::log.warning "  could not install the Python packages - check their names in the add-on configuration"
         fi
     fi
+}
+
+# Programs copied by 'persist-install <name>' come from the Alpine release that
+# was current when they were installed. After an add-on update moves to a new
+# release they usually keep working, but if one does not, installing it again
+# fixes it. Say so once, after the release changed. Nothing is deleted.
+note_alpine_release_change() {
+    local marker="${PERSIST_ROOT}/.alpine-release" now before programs
+    now="$(cut -d. -f1,2 /etc/alpine-release 2>/dev/null || true)"
+    [ -n "${now}" ] || return 0
+    before="$(cat "${marker}" 2>/dev/null || true)"
+    if [ -n "$(ls -A "${PERSIST_ROOT}/bin" 2>/dev/null)" ] && [ "${before}" != "${now}" ]; then
+        programs="$(ls -1 "${PERSIST_ROOT}/bin" | tr '\n' ' ')"
+        bashio::log.info "The add-on now runs on Alpine ${now}${before:+ (was ${before})}. Programs installed by hand with persist-install: ${programs}"
+        bashio::log.info "If one of them does not start, run 'persist-install <name>' again in the terminal."
+    fi
+    mkdir -p "${PERSIST_ROOT}" && printf '%s\n' "${now}" > "${marker}" 2>/dev/null || true
 }
 
 normalize_config_list() {
@@ -542,13 +565,27 @@ normalize_config_list() {
 port_is_published() {
     [ "${DEV_DIRECT_ACCESS:-0}" = "1" ] && return 0
     local host_port
-    host_port="$(bashio::addon.port "$1" 2>/dev/null || true)"
+    # Newer bashio renamed bashio::addon.* to bashio::app.*; the old name
+    # still works but logs a deprecation warning.
+    if declare -F bashio::app.port >/dev/null; then
+        host_port="$(bashio::app.port "$1" 2>/dev/null || true)"
+    else
+        host_port="$(bashio::addon.port "$1" 2>/dev/null || true)"
+    fi
     [ -n "${host_port}" ] && [ "${host_port}" != "null" ]
 }
 start_image_service() {
     export IMAGE_SERVICE_PORT="${WEB_PORT}"
     export TTYD_PORT="${TTYD_PORT}"
     export UPLOAD_DIR="${DATA_ROOT}/uploads"
+    # Voice input through a Home Assistant speech-to-text engine (optional).
+    # Checked again by the web interface; a bad value only turns the HA engine off.
+    VOICE_STT_PROVIDER="$(config_value voice_stt_provider "")"
+    VOICE_LANGUAGE="$(config_value voice_language "")"
+    export VOICE_STT_PROVIDER VOICE_LANGUAGE
+    if [ -n "${VOICE_STT_PROVIDER}" ]; then
+        bashio::log.info "Voice input uses the Home Assistant speech-to-text engine '${VOICE_STT_PROVIDER}'."
+    fi
 
     # The web interface is a root shell with no login of its own. Unless its
     # port has been published on purpose, it only accepts the Supervisor's

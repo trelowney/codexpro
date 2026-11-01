@@ -61,7 +61,7 @@ check() {
 if [ "${1:-}" != "--no-build" ]; then
     echo "Building ${IMAGE}..."
     docker build \
-        --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.21 \
+        --build-arg BUILD_FROM="$(sed -n 's/^  amd64: //p' "${REPO_ROOT}/codexpro/build.yaml")" \
         --build-arg BUILD_ARCH=amd64 \
         -t "${IMAGE}" "${REPO_ROOT}/codexpro" || exit 1
 fi
@@ -301,6 +301,22 @@ check "AGENTS.md explains /data/uploads"    docker exec "${NAME}" grep -q '/data
 check "Codex is 0.166 or newer"             docker exec "${NAME}" sh -c "codex --version | awk '{split(\$2,v,\".\"); exit !(v[1]>0 || v[2]>=166)}'"
 check "hass-mcp is 0.6.1 or newer"          docker exec "${NAME}" python3 -c "
 from importlib.metadata import version; v=tuple(map(int,version('hass-mcp').split('.')[:3])); assert v>=(0,6,1), v"
+
+echo "Alpine 3.24 base:"
+check "Alpine 3.24 (3.21 is end of life)"   docker exec "${NAME}" sh -c "grep -q '^3\.24\.' /etc/alpine-release"
+check "Python stays 3.13 (venv in /data)"   docker exec "${NAME}" sh -c "python3 --version | grep -q 'Python 3\.13\.' && test -x /usr/local/bin/python3.13"
+check "system libraries before /data copies" docker exec "${NAME}" bash -lc 'case "$LD_LIBRARY_PATH" in /lib:/usr/lib:*) ;; *) exit 1;; esac'
+check "Alpine release noted for persist-install" docker exec "${NAME}" sh -c "grep -q '^3\.24$' /data/packages/.alpine-release"
+check "no packages left to upgrade"         docker exec "${NAME}" sh -c "apk update -q >/dev/null 2>&1; test -z \"\$(apk version -l '<' 2>/dev/null | tail -n +2)\""
+
+echo "Voice input (Home Assistant speech-to-text):"
+check "voice script is served"              sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/voice-input.mjs | grep -q recordAudio"
+check "audio worklet is served"             sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/voice-recorder-worklet.js | grep -q registerProcessor"
+check "panel loads the voice script"        sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/ | grep -q 'voice-input.mjs'"
+check "old browser-only voice code is gone" sh -c "! docker exec ${NAME} curl -sf http://127.0.0.1:7680/ | grep -q 'webkitSpeechRecognition'"
+check "voice off when no engine is set"     sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/api/voice/config | grep -q '\"enabled\":false,\"configured\":false'"
+check "transcribe refuses other sites"      test "$(docker exec ${NAME} curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/octet-stream' --data-binary xx http://127.0.0.1:7680/api/voice/transcribe)" = "403"
+check "  ... no engine: says where to set it" sh -c "docker exec ${NAME} curl -s -X POST -H 'X-Voice-Request: 1' -H 'Content-Type: application/octet-stream' --data-binary xx http://127.0.0.1:7680/api/voice/transcribe | grep -q 'Configuration'"
 
 echo "Changes tab (git):"
 # The fake .git from the sidebar checks is not a repository; start clean

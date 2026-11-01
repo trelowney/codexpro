@@ -82,15 +82,15 @@ jobs:
         id: base
         shell: bash
         run: |
-          case "${{ matrix.arch }}" in
-            amd64)
-              echo "image=ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.21" >> "${GITHUB_OUTPUT}"
-              ;;
-            aarch64)
-              echo "image=ghcr.io/home-assistant/aarch64-base-python:3.13-alpine3.21" >> "${GITHUB_OUTPUT}"
+          # build.yaml is the single source of the base image
+          image="$(sed -n 's/^  ${{ matrix.arch }}: //p' codexpro/build.yaml)"
+          case "${image}" in
+            ghcr.io/home-assistant/*)
+              echo "Base image: ${image}"
+              echo "image=${image}" >> "${GITHUB_OUTPUT}"
               ;;
             *)
-              echo "::error::Unsupported architecture: ${{ matrix.arch }}"
+              echo "::error::No base image for ${{ matrix.arch }} in codexpro/build.yaml"
               exit 1
               ;;
           esac

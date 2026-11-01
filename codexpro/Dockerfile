@@ -1,5 +1,9 @@
 # The Python 3.13 base image is required: hass-mcp does not install on 3.12.
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.21
+# Alpine 3.24 (3.21 reached end of life on 1 November 2026), but Python stays
+# 3.13 on purpose: the hass-mcp copy kept up to date in /data and the packages
+# from persist-install live in a venv that only works with the Python that
+# made it. Moving to 3.14 would silently break them on every existing install.
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.24
 FROM ${BUILD_FROM}
 
 LABEL org.opencontainers.image.title="Codex Pro for Home Assistant"
@@ -21,7 +25,10 @@ ARG BUILD_VERSION
 # server and refuses to start when busybox ps rejects those options.
 # nodejs has a minimum version: the build fails instead of shipping an old
 # Node.js from a stale cache (Node.js security release of 2026-10-21).
-RUN apk add --no-cache \
+# apk upgrade first: the base image is only as fresh as its last publish, and
+# Alpine ships security fixes as package revisions in between.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache \
         bash \
         bubblewrap \
         ca-certificates \

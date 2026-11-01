@@ -72,6 +72,21 @@ configuration:
     description: >-
       Python package names, one per line (for example requests, pandas). They
       are reinstalled automatically after every restart and update.
+  voice_stt_provider:
+    name: Speech-to-text engine for voice input
+    description: >-
+      Optional. Lets the 🎤 Voice Input button use your Home Assistant
+      speech-to-text engine instead of the browser's (needed in Firefox and
+      in the Home Assistant app). Fill in the engine's entity ID, for example
+      stt.faster_whisper or stt.home_assistant_cloud - Settings > Voice
+      assistants shows which engines you have. Leave empty to use the
+      browser's own speech recognition. Restart the add-on after changing it.
+  voice_language:
+    name: Voice input language
+    description: >-
+      Language you will speak, for example cs, en or de-DE. Leave empty to use
+      the browser's language. It can also be changed in the voice window
+      before recording.
 network:
   7680/tcp: Web interface (not needed when you use the sidebar panel)
   7681/tcp: Terminal (not needed when you use the sidebar panel)

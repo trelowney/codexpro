@@ -41,6 +41,10 @@ Taken from it:
   on-screen keyboard fix for the Home Assistant mobile app (2.3.6), the
   `/addons` folder (2.3.2) and the Changes tab with its git API
   (`git-api.mjs`, 2.3.0/2.3.1)
+- later fixes adopted in 1.4.0: Home Assistant speech-to-text for voice input
+  (`voice-api.mjs`, `voice-input.mjs`, `voice-audio.mjs`,
+  `voice-recorder-worklet.js`, 2.4.0, with rewritten messages) and the
+  Alpine 3.24 base with `apk upgrade` at build time (2.3.8)
 
 ## What is new here
 

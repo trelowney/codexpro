@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.4.0] - 2026-11-01
+
+Dictation through Home Assistant, and a supported base system.
+
+### Added
+
+- **Dictate with Home Assistant's speech-to-text** (🎤 Voice Input): set
+  **Speech-to-text engine** (`voice_stt_provider`, for example
+  `stt.faster_whisper`) and dictation works in every browser, including
+  Firefox and the Home Assistant app, which have no speech recognition of
+  their own. Record up to 60 seconds, check and edit the text, then
+  **Insert in Terminal** (one line, control characters removed, Enter is
+  never pressed) or **Copy Text**. The speech language can be set
+  (`voice_language`) or changed in the window. Audio stays in memory and goes
+  only to that engine; the token never reaches the browser. Without the
+  option, the browser's own speech recognition is used as before
+- Every message in the voice window says what to do next; the record button
+  is never greyed out
+
+### Changed
+
+- **Alpine Linux 3.24** base: 3.21 reached end of life on 1 November 2026 and
+  gets no more security fixes. Node.js 24, tmux 3.7c, OpenSSL 3.5. Packages
+  are upgraded at build time, so fixes released after the base image are in
+- **Python stays 3.13** on purpose: the Home Assistant connection kept up to
+  date in `/data` (`auto_update_ha_mcp`, `mcp-update`) and packages from
+  `persist-install --python` keep working without being reinstalled
+- Programs copied by `persist-install` from an older Alpine release can no
+  longer shadow the system's own libraries; after the move to 3.24 the log
+  names them once, in case one needs `persist-install <name>` again. Nothing
+  is deleted
+- No more bashio deprecation warnings in the log
+
 ## [1.3.1] - 2026-10-31
 
 ### Fixed
