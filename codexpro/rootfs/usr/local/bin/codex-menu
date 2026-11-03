@@ -139,6 +139,10 @@ show_help() {
     mcp-update --check              is the connection up to date?
   Each of them prints examples with  --help.
 
+  The bar at the bottom shows your home: 🏠 ✓ when all is well,
+  otherwise what needs a look. Type  ha-status  for the details
+  and what to do. The add-on option 'status_line' changes it.
+
   Leaving:
     Close the browser tab whenever you like - nothing is lost.
     Press Ctrl-C to stop Codex and return to this menu.

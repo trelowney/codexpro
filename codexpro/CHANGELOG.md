@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.6.0] - 2026-11-03
+
+Your home on the terminal's status bar.
+
+### Added
+
+- **Home status line** at the bottom of the terminal: just 🏠 ✓ when all is
+  well, otherwise what needs a look - a smoke, gas or water alarm, repairs, an
+  automation that did not load, an old or missing backup, a nearly full disk,
+  a new Home Assistant version, waiting updates, unavailable entities and low
+  batteries. Type `ha-status` in the terminal for the details and what to do
+  about each. It is read in the background once a minute (backups, disk and
+  repairs every five minutes), so the bar itself costs nothing
+- **Option `status_line`** to choose what the line shows: `off`, only some
+  pieces (for example `backup`, `disk`), or your own entities such as
+  `sensor.living_room_co2` or `CO2=sensor.living_room_co2`. Your own
+  `/data/home/.tmux.local.conf` still wins
+- `codex-doctor` checks the home status line too
+
+### Fixed
+
+- **The add-on reported no version** in its `/health` answer; it now says
+  which version is running
+
+### Changed
+
+- Build metadata (base image, labels, version) now lives in the Dockerfile
+  instead of the deprecated `build.yaml`, as Home Assistant asks. The base is
+  still Python 3.13 on Alpine 3.24, so packages you installed keep working.
+  Each release now checks that both the amd64 and the arm64 image carry the
+  right version
+
 ## [1.5.0] - 2026-11-02
 
 Easier on a phone, and no more stuck terminal or failed big uploads.

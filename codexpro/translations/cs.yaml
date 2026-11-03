@@ -84,6 +84,17 @@ configuration:
     description: >-
       Jazyk, kterým budete mluvit, třeba cs, en nebo de-DE. Prázdné = jazyk
       prohlížeče. Dá se změnit i přímo v okně diktování před nahráváním.
+  status_line:
+    name: Domácnost ve stavovém řádku
+    description: >-
+      Řádek pod terminálem ukazuje 🏠 ✓, když je vše v pořádku, jinak co je
+      potřeba zkontrolovat: bezpečnostní poplach, opravy, automatizace, které
+      se nenačetly, starou zálohu, plný disk, novou verzi Home Assistantu,
+      aktualizace, nedostupné entity, slabé baterie. Prázdné = všechno z toho.
+      Napište off a řádek zmizí. Nebo vypište jen to, co chcete, v pořadí
+      (alerts, repairs, automations, backup, disk, core, updates, unavailable,
+      battery), a přidejte libovolnou entitu, třeba CO2=sensor.obyvak_co2.
+      Vysvětlení napíše příkaz ha-status v terminálu.
 network:
   7680/tcp: >-
     Webové rozhraní bez postranní lišty. Netřeba - panel funguje i bez něj.

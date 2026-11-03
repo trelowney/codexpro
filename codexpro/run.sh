@@ -456,19 +456,74 @@ Home Assistant keeps it in memory.
 
 Run any of these with `--help` for more. Both print what went wrong and what to
 do about it rather than a bare error.
+
+### `ha-status` - what the status bar says about the home
+
+The bar under the terminal shows 🏠 ✓ or what needs a look (safety alarms,
+repairs, automations that did not load, an old backup, a full disk, updates,
+unavailable entities, low batteries). When the user asks about it, run
+`ha-status`: it explains each item in words and says what to do.
 AGENTS_EOF
 }
 
 # ---------------------------------------------------------------------------
 # tmux: the reason a session survives disconnects
 # ---------------------------------------------------------------------------
+# The home on the status bar (ha-status). The status_line option is a list:
+# empty for the default pieces, "off" to hide it, or pieces and entities in
+# the order to show them. Home Assistant is read by one background refresh;
+# drawing the bar only reads its summary.
+setup_home_status() {
+    local entries entry pieces unknown=""
+    entries="$(normalize_config_list "$(config_value 'status_line' '')")"
+    # No "| head" here: with pipefail a closed pipe (SIGPIPE) would end the start
+    pieces="$(ha-status --pieces)"
+    pieces=" ${pieces%%$'\n'*} "
+    HOME_STATUS="on"
+    mkdir -p /tmp/ha-status
+    : > /tmp/ha-status/layout
+    rm -f /tmp/ha-status/off
+    while IFS= read -r entry; do
+        entry="$(printf '%s' "${entry}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        [ -z "${entry}" ] && continue
+        case "${entry}" in
+            off|OFF|Off|false|none) HOME_STATUS="off" ;;
+            *=*.*|*.*) printf '%s\n' "${entry}" >> /tmp/ha-status/layout ;;
+            *)
+                if [[ "${pieces}" == *" ${entry} "* ]]; then
+                    printf '%s\n' "${entry}" >> /tmp/ha-status/layout
+                else
+                    unknown="${unknown} ${entry}"
+                fi
+                ;;
+        esac
+    done <<< "${entries}"
+    if [ -n "${unknown}" ]; then
+        bashio::log.warning "status_line: left out unknown piece(s):${unknown}. Known pieces:${pieces}and entities such as sensor.x or CO2=sensor.x"
+    fi
+    if [ "${HOME_STATUS}" = "off" ]; then
+        touch /tmp/ha-status/off
+        bashio::log.info "Home status line is off (status_line: off)."
+        return 0
+    fi
+    pkill -f "ha-status --watch" 2>/dev/null || true
+    ( exec ha-status --watch </dev/null >/dev/null 2>&1 ) &
+    bashio::log.info "Home status line on (ha-status explains it in the terminal)."
+}
+
 setup_tmux() {
-    local mouse
+    local mouse status_right
     mouse="$(config_bool 'tmux_mouse' 'false')"
     case "${mouse}" in
         true|on|yes|1) mouse="on" ;;
         *) mouse="off" ;;
     esac
+
+    # The home first: on a phone the bar is short, and the clock matters least
+    status_right='Codex Pro | %H:%M'
+    if [ "${HOME_STATUS:-on}" = "on" ]; then
+        status_right='#(ha-status --line) #[fg=colour240]|#[default] %H:%M'
+    fi
 
     cat > "${DATA_HOME}/.tmux.conf" << TMUX_EOF
 # Rewritten on every add-on start, so edits here do not survive a restart.
@@ -490,8 +545,11 @@ set -g set-clipboard on
 set -as terminal-features ',*:clipboard'
 set -g status-bg colour235
 set -g status-fg colour136
-set -g status-left '[codex] '
-set -g status-right 'Codex Pro | %H:%M'
+set -g status-left '[Codex Pro] '
+set -g status-left-length 12
+set -g status-right '${status_right}'
+set -g status-right-length 120
+set -g status-interval 15
 # Your own settings, last so they win. -q: no file is fine.
 source-file -q ${DATA_HOME}/.tmux.local.conf
 TMUX_EOF
@@ -663,6 +721,7 @@ main() {
     setup_ha_mcp_server
     setup_codex_config
     warm_up_ha_mcp
+    setup_home_status
     setup_tmux
     setup_persistent_packages
     start_image_service

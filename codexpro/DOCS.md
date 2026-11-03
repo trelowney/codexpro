@@ -95,6 +95,7 @@ covers what you asked for.
 | `persistent_pip_packages` | Python packages reinstalled after every restart |
 | `voice_stt_provider` | Optional. Home Assistant speech-to-text engine for 🎤 Voice Input, for example `stt.faster_whisper`. Empty = the browser's own speech recognition |
 | `voice_language` | Language you dictate in, for example `cs` or `de-DE`. Empty = the browser's language |
+| `status_line` | What the bar at the bottom of the terminal says about your home. Empty = everything (see below). `off` = nothing. Or a list of pieces and entities, for example `backup`, `disk`, `CO2=sensor.living_room_co2` |
 
 ## Folders
 
@@ -167,6 +168,44 @@ missing, the window says what to do.
   `/data/home/.tmux.conf` is rewritten on every start, so changes there are
   lost; the local file is read last, so its settings win. Restart the add-on
   to apply them.
+
+## Your home on the status bar
+
+The bar at the bottom of the terminal shows **🏠 ✓** when nothing needs a look.
+Otherwise it lists what does, most urgent first:
+
+| Piece | Shows | When |
+|---|---|---|
+| `alerts` | 🚨 name | a smoke, gas, carbon monoxide, water or safety sensor is on (red) |
+| `repairs` | 🩺 2 repairs | Home Assistant has repairs waiting, or the system is unhealthy |
+| `automations` | 🤖 1 not loaded | an automation did not load (usually a YAML mistake) |
+| `backup` | 💾 9 days | the last backup is over 2 days old (red over 7 days, or none at all) |
+| `disk` | 💽 85% | the disk is 80 % full or more (red from 90 %) |
+| `core` | ⬆ HA 2026.11.1 | a new Home Assistant version is out |
+| `updates` | 📦 3 | updates are waiting (add-ons, integrations, devices) |
+| `unavailable` | ⚠ 4 unavailable | entities are unavailable (a device is off or out of range) |
+| `battery` | 🔋 Door lock 12% | a battery sensor is below 20 % |
+
+**Type `ha-status` in the terminal** to see each item spelled out with what to
+do about it. `ha-status --refresh` asks Home Assistant right now and says what
+failed if it cannot. **🏠 ?** means Home Assistant could not be read; **🏠 …**
+means the first reading is still on its way (it takes a few seconds after a
+start).
+
+To change the line, set the `status_line` option on the Configuration tab
+and restart the add-on:
+
+- leave it empty for all the pieces above;
+- `off` to show nothing about the home;
+- a list of pieces, in the order you want them, for example `alerts`,
+  `backup`;
+- any entity, alone (`sensor.living_room_co2` shows its name and value) or
+  with a short label (`CO2=sensor.living_room_co2`). A misspelt entity shows
+  *not found*; an unknown piece is named in the add-on log.
+
+The line is read in the background once a minute (backups, disk and repairs
+every five minutes), so it does not slow anything down. Your own tmux settings
+in `/data/home/.tmux.local.conf` still win, including your own `status-right`.
 
 ## Copying text out of the terminal
 

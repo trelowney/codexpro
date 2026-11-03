@@ -1,14 +1,11 @@
-# The Python 3.13 base image is required: hass-mcp does not install on 3.12.
-# Alpine 3.24 (3.21 reached end of life on 1 November 2026), but Python stays
-# 3.13 on purpose: the hass-mcp copy kept up to date in /data and the packages
-# from persist-install live in a venv that only works with the Python that
-# made it. Moving to 3.14 would silently break them on every existing install.
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.24
-FROM ${BUILD_FROM}
-
-LABEL org.opencontainers.image.title="Codex Pro for Home Assistant"
-LABEL org.opencontainers.image.description="OpenAI Codex CLI in the Home Assistant sidebar, with persistent sessions, in-container updates and full config access"
-LABEL org.opencontainers.image.licenses="MIT"
+# The official base image is multi-arch: Docker picks amd64 or arm64 itself,
+# so the base lives here and not in build.yaml (deprecated by the Supervisor).
+# Python 3.13 is required: hass-mcp does not install on 3.12. Alpine 3.24
+# (3.21 reached end of life on 1 November 2026), but Python stays 3.13 on
+# purpose: the hass-mcp copy kept up to date in /data and the packages from
+# persist-install live in a venv that only works with the Python that made
+# it. Moving to 3.14 would silently break them on every existing install.
+FROM ghcr.io/home-assistant/base-python:3.13-alpine3.24
 
 ENV \
     LANG=C.UTF-8 \
@@ -61,10 +58,10 @@ RUN apk upgrade --no-cache \
 # ttyd: prefer the Alpine package, fall back to the upstream static binary.
 ARG BUILD_ARCH
 RUN if ! apk add --no-cache ttyd; then \
-        case "${BUILD_ARCH:-amd64}" in \
-            amd64)   TTYD_ARCH="x86_64" ;; \
-            aarch64) TTYD_ARCH="aarch64" ;; \
-            *)       echo "Unsupported arch for ttyd fallback: ${BUILD_ARCH}" && exit 1 ;; \
+        case "${BUILD_ARCH:-$(uname -m)}" in \
+            amd64|x86_64)  TTYD_ARCH="x86_64" ;; \
+            aarch64|arm64) TTYD_ARCH="aarch64" ;; \
+            *) echo "Unsupported architecture for the ttyd fallback: ${BUILD_ARCH:-$(uname -m)}" && exit 1 ;; \
         esac; \
         curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.${TTYD_ARCH}" -o /usr/bin/ttyd && \
         chmod +x /usr/bin/ttyd; \
@@ -87,10 +84,10 @@ RUN pip3 install --no-cache-dir --break-system-packages "hass-mcp>=0.6.1" \
     && rm -f /usr/local/bin/test
 
 # Home Assistant CLI
-RUN case "${BUILD_ARCH:-amd64}" in \
-        amd64)   HA_ARCH="amd64" ;; \
-        aarch64) HA_ARCH="aarch64" ;; \
-        *)       HA_ARCH="amd64" ;; \
+RUN case "${BUILD_ARCH:-$(uname -m)}" in \
+        amd64|x86_64)  HA_ARCH="amd64" ;; \
+        aarch64|arm64) HA_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: ${BUILD_ARCH:-$(uname -m)} (amd64 and aarch64 only)" && exit 1 ;; \
     esac && \
     HA_VERSION="$(curl -fsSL https://api.github.com/repos/home-assistant/cli/releases/latest | jq -r '.tag_name')" && \
     curl -fsSL -o /usr/bin/ha \
@@ -98,10 +95,10 @@ RUN case "${BUILD_ARCH:-amd64}" in \
     chmod +x /usr/bin/ha
 
 # GitHub CLI
-RUN case "${BUILD_ARCH:-amd64}" in \
-        amd64)   GH_ARCH="amd64" ;; \
-        aarch64) GH_ARCH="arm64" ;; \
-        *)       GH_ARCH="amd64" ;; \
+RUN case "${BUILD_ARCH:-$(uname -m)}" in \
+        amd64|x86_64)  GH_ARCH="amd64" ;; \
+        aarch64|arm64) GH_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: ${BUILD_ARCH:-$(uname -m)} (amd64 and aarch64 only)" && exit 1 ;; \
     esac && \
     GH_VERSION="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | jq -r '.tag_name' | sed 's/^v//')" && \
     curl -fsSL -o /tmp/gh.tar.gz \
@@ -122,5 +119,17 @@ COPY run.sh /run.sh
 RUN chmod +x /run.sh /usr/local/bin/*
 
 WORKDIR /homeassistant
+
+# The builder and the Supervisor pass config.yaml's version. A local build
+# without it is marked as a development image instead of carrying the base
+# image's own version label. The web interface reports it at /health.
+ENV ADDON_VERSION=${BUILD_VERSION:-dev}
+LABEL io.hass.type="addon" \
+    io.hass.version="${BUILD_VERSION:-dev}" \
+    org.opencontainers.image.title="Codex Pro for Home Assistant" \
+    org.opencontainers.image.description="OpenAI Codex CLI in the Home Assistant sidebar, with persistent sessions, in-container updates and full config access" \
+    org.opencontainers.image.source="https://github.com/trelowney/codexpro" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.version="${BUILD_VERSION:-dev}"
 
 CMD ["/run.sh"]

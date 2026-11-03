@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.5.0"
+version: "1.6.0"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
@@ -94,6 +94,7 @@ options:
   persistent_pip_packages: []
   voice_stt_provider: ""
   voice_language: ""
+  status_line: []
 
 schema:
   auto_launch_codex: bool?
@@ -111,6 +112,8 @@ schema:
     - str?
   voice_stt_provider: str?
   voice_language: str?
+  status_line:
+    - str?
 
 environment:
   TERM: xterm-256color

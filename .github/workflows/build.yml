@@ -86,30 +86,12 @@ jobs:
             echo "| Free disk | $(df -h --output=avail / | tail -n1 | tr -d ' ') |"
           } | tee -a "${GITHUB_STEP_SUMMARY}"
 
-      - name: Select Home Assistant base image
-        id: base
-        shell: bash
-        run: |
-          # build.yaml is the single source of the base image
-          image="$(sed -n 's/^  ${{ matrix.arch }}: //p' codexpro/build.yaml)"
-          case "${image}" in
-            ghcr.io/home-assistant/*)
-              echo "Base image: ${image}"
-              echo "image=${image}" >> "${GITHUB_OUTPUT}"
-              ;;
-            *)
-              echo "::error::No base image for ${{ matrix.arch }} in codexpro/build.yaml"
-              exit 1
-              ;;
-          esac
-
       - name: Build and publish image
         uses: home-assistant/builder/actions/build-image@2026.03.2
         with:
           arch: ${{ matrix.arch }}
-          build-args: |
-            BUILD_FROM=${{ steps.base.outputs.image }}
-            BUILD_ARCH=${{ matrix.arch }}
+          # The base image and the labels live in the Dockerfile; the builder
+          # adds BUILD_ARCH, BUILD_VERSION and the io.hass.* labels itself
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
           context: codexpro
           image: ${{ matrix.image }}
@@ -140,3 +122,31 @@ jobs:
           image-tags: |
             ${{ needs.init.outputs.version }}
             latest
+
+  verify:
+    name: Check the published image
+    needs:
+      - init
+      - manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Version, labels and architecture of every image
+        shell: bash
+        env:
+          VERSION: ${{ needs.init.outputs.version }}
+        run: |
+          fail=0
+          for tag in "${VERSION}" latest; do
+            json="$(docker buildx imagetools inspect "ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${tag}" --format '{{json .Image}}')"
+            for platform in linux/amd64 linux/arm64; do
+              got() { jq -r --arg p "${platform}" --arg k "$1" '.[$p].config.Labels[$k] // ""' <<< "${json}"; }
+              arch="$(jq -r --arg p "${platform}" '.[$p].architecture // ""' <<< "${json}")"
+              line="${tag} ${platform}: arch=${arch} io.hass.version=$(got io.hass.version) oci.version=$(got org.opencontainers.image.version) source=$(got org.opencontainers.image.source)"
+              echo "${line}" | tee -a "${GITHUB_STEP_SUMMARY}"
+              [[ "${arch}" == "${platform#linux/}" ]] || { echo "::error::${tag} ${platform}: wrong architecture '${arch}'"; fail=1; }
+              [[ "$(got io.hass.version)" == "${VERSION}" ]] || { echo "::error::${tag} ${platform}: io.hass.version is not ${VERSION}"; fail=1; }
+              [[ "$(got org.opencontainers.image.version)" == "${VERSION}" ]] || { echo "::error::${tag} ${platform}: org.opencontainers.image.version is not ${VERSION}"; fail=1; }
+              [[ "$(got org.opencontainers.image.source)" == "https://github.com/${{ github.repository }}" ]] || { echo "::error::${tag} ${platform}: wrong image source"; fail=1; }
+            done
+          done
+          exit "${fail}"

@@ -58,11 +58,14 @@ check() {
     fi
 }
 
+ADDON_VERSION="$(sed -nE 's/^version:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/p' "${REPO_ROOT}/codexpro/config.yaml")"
 if [ "${1:-}" != "--no-build" ]; then
     echo "Building ${IMAGE}..."
+    # Like the Supervisor and the builder: the base image is in the
+    # Dockerfile, the version comes from config.yaml
     docker build \
-        --build-arg BUILD_FROM="$(sed -n 's/^  amd64: //p' "${REPO_ROOT}/codexpro/build.yaml")" \
         --build-arg BUILD_ARCH=amd64 \
+        --build-arg BUILD_VERSION="${ADDON_VERSION}" \
         -t "${IMAGE}" "${REPO_ROOT}/codexpro" || exit 1
 fi
 
@@ -165,6 +168,10 @@ check "terminal answers (7681)"          docker exec "${NAME}" curl -sf http://1
 check "persistent tmux session exists"   docker exec "${NAME}" tmux has-session -t codex
 check "/config points at /homeassistant" docker exec "${NAME}" sh -c "test -L /config"
 check "codex runs"                       docker exec "${NAME}" codex --version
+check "image labelled with the add-on version"   sh -c "docker image inspect ${IMAGE} --format '{{index .Config.Labels \"io.hass.version\"}} {{index .Config.Labels \"org.opencontainers.image.version\"}}' | grep -qx '${ADDON_VERSION} ${ADDON_VERSION}'"
+check "  ... and /health reports it"             sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/health | grep -q '\"version\":\"${ADDON_VERSION}\"'"
+check "no build.yaml (deprecated by the Supervisor)" test ! -e "${REPO_ROOT}/codexpro/build.yaml"
+check "Python stays 3.13 (venvs in /data)"       sh -c "docker exec ${NAME} python3 --version | grep -q 'Python 3.13'"
 check "config.toml parses"               docker exec "${NAME}" python3 -c \
     "import tomllib;tomllib.load(open('/data/codex/config.toml','rb'))"
 check "AGENTS.md written"                docker exec "${NAME}" sh -c "test -s /data/codex/AGENTS.md"
@@ -336,7 +343,9 @@ check "tmux: own settings applied"          sh -c "docker exec ${NAME} tmux show
 check "tmux: focus events on"               sh -c "docker exec ${NAME} tmux show -gv focus-events | grep -qx on"
 check "tmux: own file left alone"           docker exec "${NAME}" grep -q mine /data/home/.tmux.local.conf
 check "tmux: broken own file, session still up" docker exec "${DIRECT}" tmux has-session -t codex
-check "  ... and the add-on's settings still apply" sh -c "docker exec ${DIRECT} tmux show -gv status-right | grep -q 'Codex Pro'"
+check "  ... and the add-on's settings still apply" sh -c "docker exec ${DIRECT} tmux show -gv status-left | grep -q 'Codex Pro' && docker exec ${DIRECT} tmux show -gv status-right | grep -q 'ha-status --line'"
+check "home status: watcher runs, line answers" sh -c "docker exec ${NAME} pgrep -f 'ha-status --watch' >/dev/null && docker exec ${NAME} ha-status --line | grep -q '🏠'"
+check "home status: explains itself"        sh -c "docker exec ${NAME} ha-status | grep -q -e 'ha-status --refresh' -e 'Nothing needs a look' && docker exec ${NAME} ha-status --help | grep -q status_line"
 # The phone key bar has a ^C key: on the welcome screen and in the menu it
 # must not end the session, and the question must be asked again
 check "welcome: Ctrl+C keeps the session, asks again" docker exec "${NAME}" sh -c 's=$(tmux display -p -t codex "#{pid} #{pane_pid}"); tmux send-keys -t codex C-c; sleep 1; test "$(tmux display -p -t codex "#{pid} #{pane_pid}")" = "$s" && tmux capture-pane -p -t codex | grep -v "^$" | tail -1 | grep -qE "^ *> *$"'

@@ -1,0 +1,250 @@
+#!/bin/bash
+# The home on one line in the terminal's status bar: just "🏠 ✓" when all is
+# well, otherwise what needs a look (a smoke alarm, repairs, an automation that
+# did not load, an old backup, a full disk, a new Home Assistant version,
+# pending updates, unavailable entities, low batteries, entities you chose).
+#
+# Drawing the line never talks to Home Assistant: a refresh started by the
+# add-on (ha-status --watch) keeps a small summary in ${CACHE}, and the bar
+# only reads that. So it stays light on a Raspberry Pi.
+set -u
+
+CACHE="${HA_STATUS_CACHE:-/tmp/ha-status}"
+LAYOUT_FILE="${CACHE}/layout"
+CORE_BASE="${CODEXPRO_CORE_URL:-http://supervisor/core}"
+SUPERVISOR_BASE="${CODEXPRO_SUPERVISOR_URL:-http://supervisor}"
+TOKEN_FILE="${CODEXPRO_TOKEN_FILE:-/data/.ha-token}"
+STATES_EVERY="${HA_STATUS_STATES_EVERY:-60}"     # seconds
+SYSTEM_EVERY="${HA_STATUS_SYSTEM_EVERY:-300}"    # seconds
+PIECES="alerts repairs automations backup disk core updates unavailable battery"
+
+usage() {
+    cat <<EOF
+ha-status - the state of your home, as shown in the terminal's status bar
+
+  ha-status            explain everything on the line, with what to do
+  ha-status --line     the short line itself (what the status bar shows)
+  ha-status --refresh  ask Home Assistant now and say if that failed
+  ha-status --pieces   the pieces you can put in the 'status_line' option
+
+The line is set with the add-on option 'status_line' (Configuration tab):
+  empty                the default: ${PIECES}
+  off                  no home on the status bar
+  a list of pieces     only those, in that order, for example: backup, disk
+  an entity            sensor.living_room_co2, or with a label CO2=sensor.living_room_co2
+Your own tmux settings in /data/home/.tmux.local.conf always win.
+EOF
+}
+
+mkdir -p "${CACHE}" 2>/dev/null
+
+token() {
+    if [ -n "${SUPERVISOR_TOKEN:-}" ]; then printf '%s' "${SUPERVISOR_TOKEN}"
+    elif [ -r "${TOKEN_FILE}" ]; then cat "${TOKEN_FILE}"
+    fi
+}
+
+# get <url> <file>: the token goes to curl on stdin, so it never shows in ps,
+# and it is only ever sent to the Supervisor
+get() {
+    case "$1" in
+        "${CORE_BASE}"/*|"${SUPERVISOR_BASE}"/*) ;;
+        *) echo "refusing to send the token to $1" >&2; return 1 ;;
+    esac
+    printf 'header = "Authorization: Bearer %s"\n' "$(token)" \
+        | curl -fsS --max-time 15 -K - -o "$2" "$1"
+}
+
+# The layout as JSON: [{"s":"backup"}, {"s":"entity","id":"sensor.x","label":"CO2"}, ...]
+layout() {
+    local raw=""
+    [ -r "${LAYOUT_FILE}" ] && raw="$(cat "${LAYOUT_FILE}")"
+    # One entry per line (a label may contain spaces); empty = the default pieces
+    { if [ -n "${raw//[[:space:]]/}" ]; then printf '%s\n' "${raw}"; else printf '%s\n' ${PIECES}; fi; } | jq -R -s -c '
+        split("\n") | map(select(length > 0)) | map(
+            if test("^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then {s: "entity", id: ., label: ""}
+            elif test("^[^=]+=[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then (split("=") | {s: "entity", id: .[1], label: .[0]})
+            else {s: .} end)'
+}
+
+refresh_states() {
+    local raw="${CACHE}/states.raw"
+    if ! get "${CORE_BASE}/api/states" "${raw}" 2>"${CACHE}/err"; then
+        printf '{"error":"Home Assistant did not answer","ts":%s}\n' "$(date +%s)" > "${CACHE}/states.json"
+        rm -f "${raw}"
+        return 1
+    fi
+    jq -c --argjson want "$(layout | jq -c '[.[] | select(.s == "entity")]')" '
+        def clean: tostring | gsub("[\u0000-\u001f\u007f-\u009f#]"; "") | .[0:32];
+        def name: (.attributes.friendly_name // .entity_id) | clean;
+        def domain: .entity_id | split(".")[0];
+        . as $all
+        | (map({key: .entity_id, value: .}) | from_entries) as $by_id
+        | {
+            ts: (now | floor),
+            alerts: [ $all[] | select(domain == "binary_sensor" and .state == "on")
+                | select(.attributes.device_class as $c
+                    | ["smoke", "gas", "carbon_monoxide", "moisture", "safety"] | index($c))
+                | name ],
+            unavailable: [ $all[] | select(.state == "unavailable") ] | length,
+            broken_automations: [ $all[] | select(domain == "automation" and .state == "unavailable") | name ],
+            low_battery: [ $all[] | select(domain == "sensor" and .attributes.device_class == "battery")
+                | select((.state | tonumber? // 101) < 20) | {name: name, level: (.state | tonumber | floor)} ],
+            updates: [ $all[] | select(domain == "update" and .state == "on") | name ],
+            entities: [ $want[] | . as $w | $by_id[$w.id] as $s
+                | { id: $w.id,
+                    label: (if $w.label != "" then ($w.label | clean) elif $s then ($s | name) else $w.id end),
+                    state: (if $s then ($s.state | clean) else "not found" end),
+                    unit: (if $s then (($s.attributes.unit_of_measurement // "") | clean) else "" end) } ]
+          }' "${raw}" > "${CACHE}/states.tmp" 2>"${CACHE}/err" \
+        && mv -f "${CACHE}/states.tmp" "${CACHE}/states.json" \
+        || { printf '{"error":"could not read the states","ts":%s}\n' "$(date +%s)" > "${CACHE}/states.json"; rm -f "${raw}"; return 1; }
+    rm -f "${raw}"
+}
+
+# Backups, disk, Home Assistant version and repairs come from the Supervisor
+refresh_system() {
+    local part ok=0
+    for part in core/info host/info backups resolution/info; do
+        if get "${SUPERVISOR_BASE}/${part}" "${CACHE}/${part//\//_}.raw" 2>>"${CACHE}/err"; then ok=1
+        else echo '{}' > "${CACHE}/${part//\//_}.raw"; fi
+    done
+    [ "${ok}" = 1 ] || return 1
+    jq -n -c \
+        --slurpfile core "${CACHE}/core_info.raw" --slurpfile host "${CACHE}/host_info.raw" \
+        --slurpfile backups "${CACHE}/backups.raw" --slurpfile res "${CACHE}/resolution_info.raw" '
+        def epoch: try (sub("\\.[0-9]+"; "")
+            | capture("^(?<d>.{19})(?<z>Z|[+-][0-9][0-9]:[0-9][0-9])?$")
+            | (.d + "Z" | fromdateiso8601)
+              - (if (.z // "Z") == "Z" then 0
+                 else ((.z[1:3] | tonumber) * 3600 + (.z[4:6] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end))
+            catch null;
+        ($core[0].data // null) as $c | ($host[0].data // null) as $h
+        | ($backups[0].data // null) as $b | ($res[0].data // null) as $r
+        | {
+            ts: (now | floor),
+            core: (if $c then {update: ($c.update_available // false), latest: (($c.version_latest // "") | tostring)} else null end),
+            disk_pct: (if $h and ($h.disk_total // 0) > 0 then ($h.disk_used / $h.disk_total * 100 | floor) else null end),
+            last_backup: (if $b then ([$b.backups[]?.date | epoch] | map(select(. != null)) | max // 0) else null end),
+            repairs: (if $r then ($r.issues // [] | length) else null end),
+            unhealthy: (if $r then ($r.unhealthy // [] | length) else null end)
+          }' > "${CACHE}/system.tmp" 2>>"${CACHE}/err" && mv -f "${CACHE}/system.tmp" "${CACHE}/system.json"
+    rm -f "${CACHE}"/*.raw
+}
+
+refresh() {
+    : > "${CACHE}/err"
+    local status=0
+    if [ -z "$(token)" ]; then
+        printf '{"error":"no token yet","ts":%s}\n' "$(date +%s)" > "${CACHE}/states.json"
+        return 1
+    fi
+    refresh_states || status=1
+    if [ "${1:-}" = "all" ] || [ ! -s "${CACHE}/system.json" ] \
+        || [ $(( $(date +%s) - $(stat -c %Y "${CACHE}/system.json") )) -ge "${SYSTEM_EVERY}" ]; then
+        refresh_system || status=1
+    fi
+    return ${status}
+}
+
+# The summary as a list of {piece, level (ok|info|warn|bad), short, long}
+summary() {
+    local states='null' system='null'
+    [ -s "${CACHE}/states.json" ] && states="$(cat "${CACHE}/states.json")"
+    [ -s "${CACHE}/system.json" ] && system="$(cat "${CACHE}/system.json")"
+    jq -n -c --argjson st "${states}" --argjson sys "${system}" --argjson layout "$(layout)" \
+        --argjson now "$(date +%s)" '
+        def ago: ($now - .) as $s
+            | if $s < 3600 then "\($s / 60 | floor) min" elif $s < 172800 then "\($s / 3600 | floor) h"
+              else "\($s / 86400 | floor) days" end;
+        def item($lvl; $short; $long): {piece: .s, level: $lvl, short: $short, long: $long};
+        def seg:
+          if .s == "entity" then
+            (.id) as $id | ($st.entities // [])[] | select(.id == $id)
+            | {piece: "entity", level: "info", short: (.label + " " + .state + (if .unit != "" then " " + .unit else "" end)),
+               long: (.label + ": " + .state + (if .unit != "" then " " + .unit else "" end)
+                      + (if .state == "not found" then " - check the entity id in the status_line option" else "" end))}
+          elif .s == "alerts" then
+            if $st == null or $st.error then empty
+            elif ($st.alerts | length) > 0 then item("bad"; "🚨 " + ($st.alerts | join(", ")); "Safety alarm on: " + ($st.alerts | join(", ")) + ". Check it now.")
+            else empty end
+          elif .s == "repairs" then
+            if $sys == null then empty
+            elif ($sys.unhealthy // 0) > 0 then item("bad"; "🩺 unhealthy"; "The Supervisor marks the system unhealthy. See Settings > System > Repairs.")
+            elif ($sys.repairs // 0) > 0 then item("warn"; "🩺 \($sys.repairs) repair" + (if $sys.repairs > 1 then "s" else "" end);
+                "\($sys.repairs) repair(s) waiting. See Settings > System > Repairs.")
+            else empty end
+          elif .s == "automations" then
+            if $st == null or $st.error then empty
+            elif ($st.broken_automations | length) > 0 then
+              item("warn"; "🤖 \($st.broken_automations | length) not loaded";
+                   "Automations that did not load: " + ($st.broken_automations | join(", ")) + ". Ask Codex to check their YAML, then run ha-reload.")
+            else empty end
+          elif .s == "backup" then
+            if $sys == null or $sys.last_backup == null then empty
+            elif $sys.last_backup == 0 then item("bad"; "💾 no backup"; "There is no backup. Make one in Settings > System > Backups.")
+            elif ($now - $sys.last_backup) > 604800 then item("bad"; "💾 " + ($sys.last_backup | ago); "Last backup " + ($sys.last_backup | ago) + " ago. Make one in Settings > System > Backups.")
+            elif ($now - $sys.last_backup) > 172800 then item("warn"; "💾 " + ($sys.last_backup | ago); "Last backup " + ($sys.last_backup | ago) + " ago. Make one in Settings > System > Backups.")
+            else empty end
+          elif .s == "disk" then
+            if $sys == null or $sys.disk_pct == null or $sys.disk_pct < 80 then empty
+            else item(if $sys.disk_pct >= 90 then "bad" else "warn" end; "💽 \($sys.disk_pct)%";
+                      "The disk is \($sys.disk_pct)% full. Delete old backups in Settings > System > Backups.") end
+          elif .s == "core" then
+            if $sys == null or $sys.core == null or ($sys.core.update | not) then empty
+            else item("info"; "⬆ HA " + $sys.core.latest; "Home Assistant " + $sys.core.latest + " is available. Update it in Settings > System > Updates.") end
+          elif .s == "updates" then
+            if $st == null or $st.error or ($st.updates | length) == 0 then empty
+            else item("info"; "📦 \($st.updates | length)"; "Updates waiting: " + ($st.updates | join(", ")) + ". See Settings > System > Updates.") end
+          elif .s == "unavailable" then
+            if $st == null or $st.error or $st.unavailable == 0 then empty
+            else item("info"; "⚠ \($st.unavailable) unavailable"; "\($st.unavailable) entities are unavailable (a device is off or out of range). Ask Codex which ones.") end
+          elif .s == "battery" then
+            if $st == null or $st.error then empty
+            elif ($st.low_battery | length) == 1 then item("warn"; "🔋 " + $st.low_battery[0].name + " \($st.low_battery[0].level)%";
+                 "Low battery: " + $st.low_battery[0].name + " \($st.low_battery[0].level)%.")
+            elif ($st.low_battery | length) > 1 then item("warn"; "🔋 \($st.low_battery | length) low";
+                 "Low batteries: " + ([$st.low_battery[] | "\(.name) \(.level)%"] | join(", ")) + ".")
+            else empty end
+          else empty end;
+        { states: (if $st == null then "none" elif $st.error then $st.error
+                   elif ($now - $st.ts) > 900 then "stale" else "ok" end),
+          items: [ $layout[] | seg ] }'
+}
+
+line() {
+    local s
+    s="$(summary 2>/dev/null)" || { printf '🏠 ?'; return; }
+    jq -r '
+        def colour: if .level == "bad" then "#[fg=colour203]" elif .level == "warn" then "#[fg=colour221]"
+                    elif .level == "info" then "#[fg=colour250]" else "" end;
+        if .states == "none" then "#[fg=colour244]🏠 …#[default]"
+        elif .states != "ok" then "#[fg=colour244]🏠 ?#[default]"
+        elif (.items | length) == 0 then "🏠 #[fg=colour114]✓#[default]"
+        else "🏠 " + ([.items[] | colour + .short + "#[default]"] | join(" #[fg=colour240]│#[default] ")) end' <<< "${s}"
+}
+
+explain() {
+    local s
+    s="$(summary)" || { echo "Could not read the summary. Run: ha-status --refresh"; return 1; }
+    jq -r '
+        if .states == "none" then "Nothing read from Home Assistant yet. Wait a minute, or run: ha-status --refresh"
+        elif .states == "stale" then "The status has not been refreshed for over 15 minutes. Restart the add-on if this stays."
+        elif .states != "ok" then "Home Assistant could not be read (" + .states + "). Run: ha-status --refresh"
+        elif (.items | length) == 0 then "🏠 ✓  Nothing needs a look."
+        else (.items[] | "  " + .long) end' <<< "${s}"
+}
+
+case "${1:-}" in
+    --line) line ;;
+    --refresh)
+        if refresh all; then explain
+        else echo "Home Assistant could not be read:"; sed 's/^/  /' "${CACHE}/err"; exit 1; fi ;;
+    --watch)
+        # Started once by the add-on; the status bar only reads its results
+        while true; do refresh >/dev/null 2>&1; sleep "${STATES_EVERY}"; done ;;
+    --pieces) echo "${PIECES}"; echo "plus any entity: sensor.x or Label=sensor.x" ;;
+    -h|--help) usage ;;
+    "") explain ;;
+    *) usage >&2; exit 2 ;;
+esac
