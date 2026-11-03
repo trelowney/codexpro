@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.2] - 2026-11-03
+
+A clean add-on log.
+
+### Fixed
+
+- **"s6-rc-compile: warning: source /etc/s6-overlay/s6-rc.d is empty"** in
+  the add-on log at every start. Harmless (the base image ships that folder
+  empty), now gone
+
 ## [1.6.1] - 2026-11-03
 
 Codex's usage limits on the status bar, and no more warning at Codex's start.

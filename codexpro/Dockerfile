@@ -114,6 +114,10 @@ RUN cd /opt/image-service \
     && npm install --omit=dev --no-optional \
     && npm cache clean --force
 
+# rootfs/etc/s6-overlay/s6-rc.d/codexpro-placeholder: a service that does
+# nothing and is never started. The base image leaves s6-rc.d empty, so
+# s6-overlay printed "s6-rc-compile: warning: source ... is empty" at every
+# start; one definition there is enough to silence it (run.sh is not a service)
 COPY rootfs/ /
 COPY run.sh /run.sh
 RUN chmod +x /run.sh /usr/local/bin/*
