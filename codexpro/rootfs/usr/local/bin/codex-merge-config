@@ -13,6 +13,10 @@ Rules:
     a value this add-on wrote earlier is removed
   * repair a config.toml that a Codex version left in a state a newer Codex
     refuses to parse, keeping a backup next to it
+  * what the add-on wrote (needed for the rules above) is remembered in
+    codexpro-managed.json next to config.toml. Up to 1.6.0 it was kept in
+    config.toml under [__codexpro], which Codex 0.166+ warns about at every
+    start; such a table is moved out and removed.
 """
 
 import argparse
@@ -37,7 +41,8 @@ MCP_COMMAND = "/usr/local/bin/hass-mcp-wrapper"
 MCP_STARTUP_TIMEOUT_SEC = 60
 WRITABLE_ROOTS = ["/homeassistant", "/addon_configs", "/share", "/media", "/addons", "/data"]
 SANDBOX_MODES = {"workspace": "workspace-write", "full": "danger-full-access"}
-APPROVAL_POLICIES = {"untrusted", "on-failure", "on-request", "never"}
+# Codex 0.166 retired "untrusted" and refuses to start with it
+APPROVAL_POLICIES = {"on-failure", "on-request", "never"}
 
 
 # --------------------------------------------------------------------------
@@ -127,6 +132,38 @@ def load_config(path):
     return loaded if isinstance(loaded, dict) else {}
 
 
+def managed_path(config_path):
+    return config_path.parent / "codexpro-managed.json"
+
+
+def load_meta(config, config_path):
+    """What the add-on wrote before: from [__codexpro] if a version up to 1.6.0
+    left one in config.toml (it is the newest then), else from the side file."""
+    legacy = config.pop("__codexpro", None)
+    if isinstance(legacy, dict):
+        return legacy
+    try:
+        meta = json.loads(managed_path(config_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def write_atomic(path, text):
+    handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", text=True)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+    os.chmod(path, 0o600)
+
+
 def is_u32(value):
     return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 4294967295
 
@@ -134,6 +171,11 @@ def is_u32(value):
 def repair_incompatible_values(config):
     """Drop values older Codex builds wrote that newer ones reject."""
     repaired = []
+    # Codex 0.166 refuses to load a config with the retired "untrusted" policy
+    # (also when picked inside Codex earlier); on-request is the closest
+    if config.get("approval_policy") == "untrusted":
+        config["approval_policy"] = "on-request"
+        repaired.append("approval_policy")
     tui = config.get("tui")
     if isinstance(tui, dict):
         if "model_availability_nux" in tui and not is_u32(tui["model_availability_nux"]):
@@ -218,10 +260,7 @@ def main():
     if repair_incompatible_values(config) and path.exists():
         backup(path, ".repaired.bak")
 
-    meta = config.setdefault("__codexpro", {})
-    if not isinstance(meta, dict):
-        meta = {}
-        config["__codexpro"] = meta
+    meta = load_meta(config, path)
 
     apply_managed(config, meta, "model", args.model or None)
 
@@ -286,8 +325,6 @@ def main():
 
     if not mcp_servers:
         config.pop("mcp_servers", None)
-    if not meta:
-        config.pop("__codexpro", None)
 
     lines = [
         "# Codex configuration",
@@ -303,19 +340,14 @@ def main():
     emit_table(lines, [], config)
     rendered = "\n".join(lines).rstrip() + "\n"
 
-    handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", text=True)
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
-            handle.write(rendered)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_path, path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink()
-
-    os.chmod(path, 0o600)
+    # The side file first: if writing config.toml fails, its old [__codexpro]
+    # (if any) is still there and is read first next time.
+    meta_path = managed_path(path)
+    if meta:
+        write_atomic(meta_path, json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    elif meta_path.exists():
+        meta_path.unlink()
+    write_atomic(path, rendered)
     return 0
 
 

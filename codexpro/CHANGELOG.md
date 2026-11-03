@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.6.1] - 2026-11-03
+
+Codex's usage limits on the status bar, and no more warning at Codex's start.
+
+### Added
+
+- **Codex's usage limits on the terminal's status bar**, before the home:
+  `⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00` - how much of the 5-hour and the weekly
+  limit is left (as Codex itself shows it), and when each resets. Yellow at
+  25 % left, red at 10 % left.
+  Codex writes them down with every answer, so they are as of its last answer
+  here; nothing is shown before the first one or with an API key. `ha-status`
+  spells them out. They are the new `limits` piece of the `status_line` option,
+  on by default; list the pieces without `limits` to hide them
+
+### Fixed
+
+- **"Codex is ignoring 1 unrecognized configuration setting: `__codexpro`"**
+  at every Codex start. The add-on kept a note of what it had written in
+  `config.toml`; the note now lives in `/data/codex/codexpro-managed.json`, and
+  the old table is removed on the first start. Nothing you set in Codex
+  changes
+- **Codex did not start at all with the approval mode `untrusted`.** Codex
+  0.166 retired it (`approval_policy = "untrusted" is no longer supported`).
+  The add-on now uses `on-request` instead, which still asks before risky
+  steps, says so in its log, and fixes a `config.toml` that still has it
+  (a copy is kept as `config.toml.repaired.bak`). The option still accepts
+  the old value, so saved settings stay valid
+
 ## [1.6.0] - 2026-11-03
 
 Your home on the terminal's status bar.

@@ -1,12 +1,17 @@
 #!/bin/bash
-# The home on one line in the terminal's status bar: just "🏠 ✓" when all is
-# well, otherwise what needs a look (a smoke alarm, repairs, an automation that
+# Codex's usage limits and the home on one line in the terminal's status bar:
+# "⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00" (how much of the 5-hour and
+# the weekly limit is left, as Codex itself shows it, and when each resets), then just "🏠 ✓" when all is well,
+# otherwise what needs a look (a smoke alarm, repairs, an automation that
 # did not load, an old backup, a full disk, a new Home Assistant version,
 # pending updates, unavailable entities, low batteries, entities you chose).
 #
 # Drawing the line never talks to Home Assistant: a refresh started by the
 # add-on (ha-status --watch) keeps a small summary in ${CACHE}, and the bar
 # only reads that. So it stays light on a Raspberry Pi.
+# The usage limits come from Codex itself: after every answer it writes them
+# into its session files (CODEX_HOME/sessions), and the refresh reads the
+# newest ones. So they are as of Codex's last answer in this add-on.
 set -u
 
 CACHE="${HA_STATUS_CACHE:-/tmp/ha-status}"
@@ -16,11 +21,14 @@ SUPERVISOR_BASE="${CODEXPRO_SUPERVISOR_URL:-http://supervisor}"
 TOKEN_FILE="${CODEXPRO_TOKEN_FILE:-/data/.ha-token}"
 STATES_EVERY="${HA_STATUS_STATES_EVERY:-60}"     # seconds
 SYSTEM_EVERY="${HA_STATUS_SYSTEM_EVERY:-300}"    # seconds
-PIECES="alerts repairs automations backup disk core updates unavailable battery"
+LIMITS_EVERY="${HA_STATUS_LIMITS_EVERY:-15}"     # seconds (just reads local files)
+SESSIONS="${CODEX_HOME:-/data/codex}/sessions"
+PIECES="limits alerts repairs automations backup disk core updates unavailable battery"
 
 usage() {
     cat <<EOF
-ha-status - the state of your home, as shown in the terminal's status bar
+ha-status - Codex's usage limits and the state of your home, as shown in the
+terminal's status bar
 
   ha-status            explain everything on the line, with what to do
   ha-status --line     the short line itself (what the status bar shows)
@@ -29,7 +37,8 @@ ha-status - the state of your home, as shown in the terminal's status bar
 
 The line is set with the add-on option 'status_line' (Configuration tab):
   empty                the default: ${PIECES}
-  off                  no home on the status bar
+  off                  nothing on the status bar (no limits, no home)
+  limits               Codex's 5-hour and weekly usage, and when each resets
   a list of pieces     only those, in that order, for example: backup, disk
   an entity            sensor.living_room_co2, or with a label CO2=sensor.living_room_co2
 Your own tmux settings in /data/home/.tmux.local.conf always win.
@@ -65,6 +74,41 @@ layout() {
             if test("^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then {s: "entity", id: ., label: ""}
             elif test("^[^=]+=[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then (split("=") | {s: "entity", id: .[1], label: .[0]})
             else {s: .} end)'
+}
+
+# The newest usage snapshot Codex wrote, as
+# {ts, windows: [{minutes, used, resets_at}], reached}. Only re-read when a
+# session file changed, and only the last week of them (the longest window).
+refresh_limits() {
+    local files newest
+    [ -d "${SESSIONS}" ] || { rm -f "${CACHE}/limits.json" "${CACHE}/limits.src"; return 0; }
+    files="$(find "${SESSIONS}" -name 'rollout-*.jsonl' -mmin -11520 -printf '%T@ %p\n' 2>/dev/null \
+        | sort -rn | sed -n '1,5p')"
+    newest="${files%%$'\n'*}"
+    [ -n "${newest}" ] || { rm -f "${CACHE}/limits.json" "${CACHE}/limits.src"; return 0; }
+    if [ -s "${CACHE}/limits.json" ] && [ "$(cat "${CACHE}/limits.src" 2>/dev/null)" = "${newest}" ]; then
+        return 0
+    fi
+    local stamp file snap
+    while read -r stamp file; do
+        [ -n "${file}" ] || continue
+        # Codex keeps one snapshot per quota; "codex" is the one /status shows
+        snap="$(grep -F '"token_count"' "${file}" 2>/dev/null | tail -n 50 | jq -c -s --arg ts "${stamp%%.*}" '
+            [ .[] | .payload.rate_limits? // empty
+              | select((.limit_id // "codex") == "codex" and (.primary != null or .secondary != null)) ]
+            | last // empty
+            | { ts: ($ts | tonumber),
+                reached: (.rate_limit_reached_type != null),
+                windows: [ .primary, .secondary | select(. != null)
+                           | {minutes: (.window_minutes // 0), used: (.used_percent // 0), resets_at: .resets_at} ] }' 2>/dev/null)"
+        [ -n "${snap}" ] && break
+    done <<< "${files}"
+    if [ -n "${snap}" ]; then
+        printf '%s\n' "${snap}" > "${CACHE}/limits.tmp" && mv -f "${CACHE}/limits.tmp" "${CACHE}/limits.json"
+    else
+        rm -f "${CACHE}/limits.json"
+    fi
+    printf '%s' "${newest}" > "${CACHE}/limits.src"
 }
 
 refresh_states() {
@@ -135,6 +179,7 @@ refresh_system() {
 refresh() {
     : > "${CACHE}/err"
     local status=0
+    refresh_limits
     if [ -z "$(token)" ]; then
         printf '{"error":"no token yet","ts":%s}\n' "$(date +%s)" > "${CACHE}/states.json"
         return 1
@@ -149,17 +194,44 @@ refresh() {
 
 # The summary as a list of {piece, level (ok|info|warn|bad), short, long}
 summary() {
-    local states='null' system='null'
+    local states='null' system='null' limits='null'
     [ -s "${CACHE}/states.json" ] && states="$(cat "${CACHE}/states.json")"
+    [ -s "${CACHE}/limits.json" ] && limits="$(cat "${CACHE}/limits.json")"
     [ -s "${CACHE}/system.json" ] && system="$(cat "${CACHE}/system.json")"
-    jq -n -c --argjson st "${states}" --argjson sys "${system}" --argjson layout "$(layout)" \
+    jq -n -c --argjson st "${states}" --argjson sys "${system}" --argjson lim "${limits}" --argjson layout "$(layout)" \
         --argjson now "$(date +%s)" '
         def ago: ($now - .) as $s
             | if $s < 3600 then "\($s / 60 | floor) min" elif $s < 172800 then "\($s / 3600 | floor) h"
               else "\($s / 86400 | floor) days" end;
         def item($lvl; $short; $long): {piece: .s, level: $lvl, short: $short, long: $long};
+        def clock: if (. - $now) < 79200 then strflocaltime("%H:%M") else strflocaltime("%a %H:%M") end;
+        def span: if . == 300 then "5h" elif . == 10080 then "7d"
+                  elif . > 0 and . < 1440 then "\(. / 60 | floor)h" elif . >= 1440 then "\(. / 1440 | floor)d" else "" end;
+        def span_long: if . == 300 then "5-hour" elif . == 10080 then "weekly"
+                       elif . > 0 then (span + "") else "usage" end;
+        def limit_seg:
+          if $lim == null or (($lim.windows // []) | length) == 0 then empty
+          else
+            [ $lim.windows[] | . as $w
+              | ($w.resets_at != null and $w.resets_at <= $now) as $over
+              | ((100 - $w.used) | if . < 0 then 0 elif . > 100 then 100 else . end | round) as $left
+              | { over: $over, left: $left,
+                  short: ($w.minutes | span) + (if $over then " reset"
+                          else " \($left)% left" + (if $w.resets_at then " ↻" + ($w.resets_at | clock) else "" end) end),
+                  long: "The " + ($w.minutes | span_long) + " limit: "
+                        + (if $over then "reset at " + ($w.resets_at | clock) + ", new numbers come with Codex'"'"'s next answer."
+                           else "\($left)% left" + (if $w.resets_at then ", resets " + ($w.resets_at | clock) else "" end) + "." end) } ] as $ws
+            | ([ $ws[] | select(.over | not) | .left ] | min // 100) as $low
+            | item(if $lim.reached or $low <= 10 then "bad" elif $low <= 25 then "warn" else "info" end;
+                   "⏱ " + ([$ws[].short] | join(" · "));
+                   "Codex usage, as of its last answer here (" + ($lim.ts | strflocaltime("%H:%M")) + "): "
+                   + ([$ws[].long] | join(" "))
+                   + (if $lim.reached then " The limit is reached: Codex waits until the reset."
+                      else " At 0% left Codex stops until the reset." end))
+          end;
         def seg:
-          if .s == "entity" then
+          if .s == "limits" then limit_seg
+          elif .s == "entity" then
             (.id) as $id | ($st.entities // [])[] | select(.id == $id)
             | {piece: "entity", level: "info", short: (.label + " " + .state + (if .unit != "" then " " + .unit else "" end)),
                long: (.label + ": " + .state + (if .unit != "" then " " + .unit else "" end)
@@ -209,7 +281,10 @@ summary() {
           else empty end;
         { states: (if $st == null then "none" elif $st.error then $st.error
                    elif ($now - $st.ts) > 900 then "stale" else "ok" end),
-          items: [ $layout[] | seg ] }'
+          home: ([ $layout[] | select(.s != "limits") ] | length > 0),
+          want_limits: ([ $layout[] | select(.s == "limits") ] | length > 0),
+          limits: [ $layout[] | select(.s == "limits") | seg ],
+          items: [ $layout[] | select(.s != "limits") | seg ] }'
 }
 
 line() {
@@ -218,21 +293,28 @@ line() {
     jq -r '
         def colour: if .level == "bad" then "#[fg=colour203]" elif .level == "warn" then "#[fg=colour221]"
                     elif .level == "info" then "#[fg=colour250]" else "" end;
-        if .states == "none" then "#[fg=colour244]🏠 …#[default]"
-        elif .states != "ok" then "#[fg=colour244]🏠 ?#[default]"
-        elif (.items | length) == 0 then "🏠 #[fg=colour114]✓#[default]"
-        else "🏠 " + ([.items[] | colour + .short + "#[default]"] | join(" #[fg=colour240]│#[default] ")) end' <<< "${s}"
+        def sep: " #[fg=colour240]│#[default] ";
+        [ (.limits[] | colour + .short + "#[default]"),
+          (if .home | not then empty
+           elif .states == "none" then "#[fg=colour244]🏠 …#[default]"
+           elif .states != "ok" then "#[fg=colour244]🏠 ?#[default]"
+           elif (.items | length) == 0 then "🏠 #[fg=colour114]✓#[default]"
+           else "🏠 " + ([.items[] | colour + .short + "#[default]"] | join(sep)) end) ]
+        | join(sep)' <<< "${s}"
 }
 
 explain() {
     local s
     s="$(summary)" || { echo "Could not read the summary. Run: ha-status --refresh"; return 1; }
     jq -r '
-        if .states == "none" then "Nothing read from Home Assistant yet. Wait a minute, or run: ha-status --refresh"
-        elif .states == "stale" then "The status has not been refreshed for over 15 minutes. Restart the add-on if this stays."
-        elif .states != "ok" then "Home Assistant could not be read (" + .states + "). Run: ha-status --refresh"
-        elif (.items | length) == 0 then "🏠 ✓  Nothing needs a look."
-        else (.items[] | "  " + .long) end' <<< "${s}"
+        (.limits[] | "⏱ " + .long),
+        (if .want_limits and .limits == [] then "⏱ Codex usage appears after its first answer (signed in with ChatGPT; an API key has no 5-hour or weekly limit)." else empty end),
+        (if .home | not then empty
+         elif .states == "none" then "Nothing read from Home Assistant yet. Wait a minute, or run: ha-status --refresh"
+         elif .states == "stale" then "The status has not been refreshed for over 15 minutes. Restart the add-on if this stays."
+         elif .states != "ok" then "Home Assistant could not be read (" + .states + "). Run: ha-status --refresh"
+         elif (.items | length) == 0 then "🏠 ✓  Nothing needs a look."
+         else (.items[] | "  " + .long) end)' <<< "${s}"
 }
 
 case "${1:-}" in
@@ -242,7 +324,16 @@ case "${1:-}" in
         else echo "Home Assistant could not be read:"; sed 's/^/  /' "${CACHE}/err"; exit 1; fi ;;
     --watch)
         # Started once by the add-on; the status bar only reads its results
-        while true; do refresh >/dev/null 2>&1; sleep "${STATES_EVERY}"; done ;;
+        # The usage limits are local files, so they are read more often
+        last=0
+        while true; do
+            if [ $(( $(date +%s) - last )) -ge "${STATES_EVERY}" ]; then
+                refresh >/dev/null 2>&1; last="$(date +%s)"
+            else
+                refresh_limits >/dev/null 2>&1
+            fi
+            sleep "${LIMITS_EVERY}"
+        done ;;
     --pieces) echo "${PIECES}"; echo "plus any entity: sensor.x or Label=sensor.x" ;;
     -h|--help) usage ;;
     "") explain ;;

@@ -22,6 +22,7 @@
 #   * startup removes only the old npm/pip caches; user files and notes are never deleted or left out of backups
 #   * config.yaml leaves downloadable things out of backups
 #   * the terminal WebSocket works through the /terminal proxy
+#   * the status bar shows Codex's usage limits, config.toml carries no add-on note
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -345,6 +346,14 @@ check "tmux: own file left alone"           docker exec "${NAME}" grep -q mine /
 check "tmux: broken own file, session still up" docker exec "${DIRECT}" tmux has-session -t codex
 check "  ... and the add-on's settings still apply" sh -c "docker exec ${DIRECT} tmux show -gv status-left | grep -q 'Codex Pro' && docker exec ${DIRECT} tmux show -gv status-right | grep -q 'ha-status --line'"
 check "home status: watcher runs, line answers" sh -c "docker exec ${NAME} pgrep -f 'ha-status --watch' >/dev/null && docker exec ${NAME} ha-status --line | grep -q '🏠'"
+# Codex's usage limits: from the newest session file, the "codex" quota only
+docker exec "${NAME}" sh -c 'd=/data/codex/sessions/2026/11/03; mkdir -p $d; n=$(date +%s); for l in "codex 38.2 $((n+7200)) 20.7 $((n+259200))" "other 99 $((n+60)) 99 $((n+60))"; do set -- $l; printf "{\"timestamp\":\"x\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":null,\"rate_limits\":{\"limit_id\":\"%s\",\"primary\":{\"used_percent\":%s,\"window_minutes\":300,\"resets_at\":%s},\"secondary\":{\"used_percent\":%s,\"window_minutes\":10080,\"resets_at\":%s},\"credits\":null,\"plan_type\":\"plus\",\"rate_limit_reached_type\":null}}}\n" "$@" >> $d/rollout-smoke.jsonl; done'
+check "usage limits: 5h and 7d on the bar, before the home" sh -c "for _ in \$(seq 1 25); do docker exec ${NAME} ha-status --line | sed 's/#\[[^]]*\]//g' | grep -q '^⏱ 5h 62% left ↻[0-9][0-9]:[0-9][0-9] · 7d 79% left ↻[A-Z][a-z][a-z] [0-9:]* │ 🏠' && exit 0; sleep 1; done; exit 1"
+check "usage limits: ha-status spells them out" sh -c "docker exec ${NAME} ha-status | grep -q 'The 5-hour limit: 62% left, resets'"
+docker exec "${NAME}" rm -rf /data/codex/sessions/2026/11/03
+check "config.toml: no add-on note Codex would warn about" sh -c "! docker exec ${NAME} grep -q __codexpro /data/codex/config.toml && docker exec ${NAME} test -s /data/codex/codexpro-managed.json"
+check "  ... and Codex reports no unrecognized setting" sh -c "! docker exec ${NAME} sh -c 'timeout 60 codex doctor 2>&1' | grep -q -i unrecognized"
+check "an old [__codexpro] table is moved out" docker exec "${NAME}" sh -c "rm -rf /tmp/cm && mkdir /tmp/cm && printf 'model = \"mine\"\n\n[__codexpro]\nmanaged_model = \"gpt-x\"\n' > /tmp/cm/config.toml && codex-merge-config --config /tmp/cm/config.toml --model gpt-x --file-access full --enable-mcp false >/dev/null && ! grep -q __codexpro /tmp/cm/config.toml && grep -q '^model = \"mine\"' /tmp/cm/config.toml && grep -q gpt-x /tmp/cm/codexpro-managed.json"
 check "home status: explains itself"        sh -c "docker exec ${NAME} ha-status | grep -q -e 'ha-status --refresh' -e 'Nothing needs a look' && docker exec ${NAME} ha-status --help | grep -q status_line"
 # The phone key bar has a ^C key: on the welcome screen and in the menu it
 # must not end the session, and the question must be asked again

@@ -121,18 +121,18 @@ else
     warn "No persistent session found." "It is created on the next connection; nothing to do."
 fi
 
-# 7b. Home on the status bar
+# 7b. Usage limits and the home on the status bar
 if [ ! -e /tmp/ha-status/off ]; then
     home_line="$(ha-status --line 2>/dev/null | sed 's/#\[[^]]*\]//g')"
     if ! pgrep -f "ha-status --watch" >/dev/null 2>&1; then
-        warn "The home status line is not being refreshed." "Restart the add-on (Settings > Add-ons > Codex Pro > Restart)."
+        warn "The status line (usage limits, home) is not being refreshed." "Restart the add-on (Settings > Add-ons > Codex Pro > Restart)."
     elif [[ "${home_line}" == *"🏠 ?"* ]]; then
         warn "The home status line cannot read Home Assistant." "Run 'ha-status --refresh' - it says what failed."
     else
-        ok "Home status line: ${home_line}"
+        ok "Status line: ${home_line}"
     fi
 else
-    ok "Home status line is off (status_line: off)"
+    ok "Status line is off (status_line: off)"
 fi
 
 # 8. Disk

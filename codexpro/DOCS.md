@@ -84,7 +84,7 @@ covers what you asked for.
 |---|---|
 | `auto_launch_codex` | Open straight into Codex instead of the menu |
 | `model` | Empty = the Codex default. Only fill in a model you know exists |
-| `approval_policy` | `on-request` (default), `untrusted`, `on-failure`, `never`. With `never`, Codex uses the Home Assistant tools without asking; otherwise it asks before each one (answer "Allow for this session" to stop the questions) |
+| `approval_policy` | `on-request` (default), `on-failure`, `never`. (`untrusted` is no longer offered by Codex and works like `on-request`.) With `never`, Codex uses the Home Assistant tools without asking; otherwise it asks before each one (answer "Allow for this session" to stop the questions) |
 | `file_access` | `full` (default) = Codex can run commands and change files in everything the add-on sees - which is only the folders listed below. `workspace` = Codex's own extra sandbox; Home Assistant's add-on container does not allow it, so the add-on falls back to `full` and says so in the log |
 | `enable_ha_mcp` | Let Codex query entities and call services |
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |
@@ -95,7 +95,7 @@ covers what you asked for.
 | `persistent_pip_packages` | Python packages reinstalled after every restart |
 | `voice_stt_provider` | Optional. Home Assistant speech-to-text engine for 🎤 Voice Input, for example `stt.faster_whisper`. Empty = the browser's own speech recognition |
 | `voice_language` | Language you dictate in, for example `cs` or `de-DE`. Empty = the browser's language |
-| `status_line` | What the bar at the bottom of the terminal says about your home. Empty = everything (see below). `off` = nothing. Or a list of pieces and entities, for example `backup`, `disk`, `CO2=sensor.living_room_co2` |
+| `status_line` | What the bar at the bottom of the terminal shows: Codex's usage limits and your home. Empty = everything (see below). `off` = nothing. Or a list of pieces and entities, for example `limits`, `backup`, `disk`, `CO2=sensor.living_room_co2` |
 
 ## Folders
 
@@ -169,13 +169,32 @@ missing, the window says what to do.
   lost; the local file is read last, so its settings win. Restart the add-on
   to apply them.
 
-## Your home on the status bar
+## Codex usage and your home on the status bar
 
-The bar at the bottom of the terminal shows **🏠 ✓** when nothing needs a look.
+The bar at the bottom of the terminal starts with how much of Codex's usage
+limits you have left and when each one resets, for example:
+
+**⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00**
+
+- **5h** is the 5-hour limit, **7d** the weekly one; the percentage is how much
+  of it is **left** (the same number Codex shows in `/status` and ChatGPT on
+  the web), and **↻** is when it is full again (a time today, or a day and a
+  time for later). At 0 % left Codex stops until that time.
+- The numbers turn yellow at 25 % left and red at 10 % left.
+- Codex learns them with every answer, so they are **as of its last answer in
+  this add-on**. Using Codex elsewhere with the same account (on a computer, in
+  the ChatGPT app) also counts, but shows here only after the next answer.
+- **5h reset** means that window has started again since then; the new
+  number comes with the next answer.
+- Nothing is shown before Codex's first answer, and nothing when you sign in
+  with an API key (that is billed per use and has no such limits).
+
+After that the bar shows **🏠 ✓** when nothing needs a look in your home.
 Otherwise it lists what does, most urgent first:
 
 | Piece | Shows | When |
 |---|---|---|
+| `limits` | ⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00 | Codex's usage limits (see above) |
 | `alerts` | 🚨 name | a smoke, gas, carbon monoxide, water or safety sensor is on (red) |
 | `repairs` | 🩺 2 repairs | Home Assistant has repairs waiting, or the system is unhealthy |
 | `automations` | 🤖 1 not loaded | an automation did not load (usually a YAML mistake) |
@@ -187,7 +206,7 @@ Otherwise it lists what does, most urgent first:
 | `battery` | 🔋 Door lock 12% | a battery sensor is below 20 % |
 
 **Type `ha-status` in the terminal** to see each item spelled out with what to
-do about it. `ha-status --refresh` asks Home Assistant right now and says what
+do about it, including the usage limits. `ha-status --refresh` asks Home Assistant right now and says what
 failed if it cannot. **🏠 ?** means Home Assistant could not be read; **🏠 …**
 means the first reading is still on its way (it takes a few seconds after a
 start).
@@ -196,9 +215,10 @@ To change the line, set the `status_line` option on the Configuration tab
 and restart the add-on:
 
 - leave it empty for all the pieces above;
-- `off` to show nothing about the home;
+- `off` to show nothing (no limits, no home);
 - a list of pieces, in the order you want them, for example `alerts`,
-  `backup`;
+  `backup`. Only `limits` shows just the usage; leave `limits` out of the list
+  to hide the usage;
 - any entity, alone (`sensor.living_room_co2` shows its name and value) or
   with a short label (`CO2=sensor.living_room_co2`). A misspelt entity shows
   *not found*; an unknown piece is named in the add-on log.

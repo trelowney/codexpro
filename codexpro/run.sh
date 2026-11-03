@@ -311,6 +311,13 @@ setup_codex_config() {
     local model approval file_access enable_mcp api_key
     model="$(config_value 'model' '')"
     approval="$(config_choice 'approval_policy' 'on-request' untrusted on-failure on-request never)"
+    # Codex 0.166 retired "untrusted" and refuses to start with it at all. The
+    # option keeps the value so saved settings stay valid; on-request is the
+    # closest (it still asks before risky steps).
+    if [ "${approval}" = "untrusted" ]; then
+        bashio::log.warning "approval_policy 'untrusted' is no longer offered by Codex (it would not start). Using 'on-request', which still asks before risky steps. Pick on-request in the add-on Configuration tab to stop this message."
+        approval="on-request"
+    fi
     file_access="$(config_choice 'file_access' 'full' workspace full)"
     enable_mcp="$(config_bool 'enable_ha_mcp' 'true')"
     api_key="$(config_value 'openai_api_key' '')"
@@ -457,9 +464,12 @@ Home Assistant keeps it in memory.
 Run any of these with `--help` for more. Both print what went wrong and what to
 do about it rather than a bare error.
 
-### `ha-status` - what the status bar says about the home
+### `ha-status` - what the status bar says about usage and the home
 
-The bar under the terminal shows 🏠 ✓ or what needs a look (safety alarms,
+The bar under the terminal starts with Codex's usage limits as of your last
+answer (⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00 = 62% of the 5-hour limit left,
+it resets at 14:30; 80% of the weekly one left, it resets on Friday). Then it
+shows 🏠 ✓ or what needs a look (safety alarms,
 repairs, automations that did not load, an old backup, a full disk, updates,
 unavailable entities, low batteries). When the user asks about it, run
 `ha-status`: it explains each item in words and says what to do.
@@ -469,7 +479,8 @@ AGENTS_EOF
 # ---------------------------------------------------------------------------
 # tmux: the reason a session survives disconnects
 # ---------------------------------------------------------------------------
-# The home on the status bar (ha-status). The status_line option is a list:
+# Codex's usage limits and the home on the status bar (ha-status). The
+# status_line option is a list:
 # empty for the default pieces, "off" to hide it, or pieces and entities in
 # the order to show them. Home Assistant is read by one background refresh;
 # drawing the bar only reads its summary.
@@ -503,12 +514,12 @@ setup_home_status() {
     fi
     if [ "${HOME_STATUS}" = "off" ]; then
         touch /tmp/ha-status/off
-        bashio::log.info "Home status line is off (status_line: off)."
+        bashio::log.info "Status line is off (status_line: off): no usage limits, no home."
         return 0
     fi
     pkill -f "ha-status --watch" 2>/dev/null || true
     ( exec ha-status --watch </dev/null >/dev/null 2>&1 ) &
-    bashio::log.info "Home status line on (ha-status explains it in the terminal)."
+    bashio::log.info "Status line on: Codex usage limits and the home (ha-status explains it in the terminal)."
 }
 
 setup_tmux() {
