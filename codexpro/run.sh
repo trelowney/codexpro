@@ -471,9 +471,14 @@ setup_tmux() {
     esac
 
     cat > "${DATA_HOME}/.tmux.conf" << TMUX_EOF
+# Rewritten on every add-on start, so edits here do not survive a restart.
+# Put your own settings in ${DATA_HOME}/.tmux.local.conf instead: it is read
+# at the end, so it wins over anything below, and the add-on never touches it.
 set -g mouse ${mouse}
 set -g history-limit 50000
 set -g escape-time 20
+# Pass focus in/out through, so programs notice the terminal regaining focus
+set -g focus-events on
 set -g base-index 1
 set -g renumber-windows on
 set -ga terminal-overrides ',xterm*:smcup@:rmcup@'
@@ -487,6 +492,8 @@ set -g status-bg colour235
 set -g status-fg colour136
 set -g status-left '[codex] '
 set -g status-right 'Codex Pro | %H:%M'
+# Your own settings, last so they win. -q: no file is fine.
+source-file -q ${DATA_HOME}/.tmux.local.conf
 TMUX_EOF
 }
 

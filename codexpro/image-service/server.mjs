@@ -109,6 +109,47 @@ app.post('/upload', upload.single('file'), (req, res) => {
     });
 });
 
+// Shown in the terminal frame while ttyd isn't listening yet. run.sh starts
+// ttyd a few seconds after this service, and Home Assistant opens the panel as
+// soon as this port answers. The page asks every second whether the terminal
+// is up and then reloads itself, so ttyd's page replaces it. If that takes
+// unusually long it says what to do instead of spinning forever.
+// (Idea from esjavadex/claude-code-ha 2.4.6.)
+const TERMINAL_STARTING_PAGE = `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<noscript><meta http-equiv="refresh" content="2"></noscript>
+<title>Starting the terminal</title>
+<style>html,body{margin:0;height:100%;background:#1e1e1e;color:#ccc;color-scheme:dark}
+body{display:flex;align-items:center;justify-content:center;font:15px system-ui,sans-serif;text-align:center;padding:0 16px;box-sizing:border-box}
+#late{display:none;max-width:34em;line-height:1.5;margin-top:12px;color:#aaa}
+button{margin-top:14px;font:inherit;padding:8px 18px;background:#007acc;color:#fff;border:0;border-radius:4px;cursor:pointer}</style>
+</head><body><div>
+<div id="msg">Starting the terminal…</div>
+<div id="late">This is taking longer than usual. Wait a little more, or press <b>Try again</b>.
+If it still does not start, open <b>Settings → Add-ons → Codex Pro</b>, look at the <b>Log</b> tab
+and press <b>Restart</b> there. Your files and conversations are kept.<br>
+<button type="button" onclick="location.reload()">Try again</button></div>
+</div>
+<script>
+(function () {
+    var started = Date.now();
+    function check() {
+        fetch(location.href, { cache: 'no-store', headers: { Accept: 'text/html' } })
+            .then(function (r) {
+                if (r.status !== 503) { location.reload(); return; }
+                later();
+            }, later);
+    }
+    function later() {
+        if (Date.now() - started > 30000) document.getElementById('late').style.display = 'block';
+        setTimeout(check, 1000);
+    }
+    setTimeout(check, 1000);
+})();
+</script>
+</body></html>`;
+
 // Proxy endpoint for ttyd terminal
 // This allows ttyd to work through Home Assistant ingress
 // Handles both HTTP and WebSocket connections
@@ -130,7 +171,13 @@ app.use('/terminal', createProxyMiddleware({
         error: (err, req, res) => {
             console.error('Proxy error:', err.message);
             // res may be a raw socket (WebSocket) instead of an Express response
-            if (typeof res.status === 'function') {
+            if (typeof res.status === 'function' && !res.headersSent &&
+                req.method === 'GET' && req.accepts('html')) {
+                // The terminal page itself: ttyd is not up yet (or is
+                // restarting). Show a page that waits for it.
+                res.status(503).set({ 'Retry-After': '1', 'Cache-Control': 'no-store' })
+                    .type('html').send(TERMINAL_STARTING_PAGE);
+            } else if (typeof res.status === 'function' && !res.headersSent) {
                 res.status(502).send('Failed to connect to terminal');
             } else if (typeof res.end === 'function') {
                 res.end();
@@ -139,8 +186,13 @@ app.use('/terminal', createProxyMiddleware({
     }
 }));
 
-// Serve static files (HTML interface) - MUST be after API routes
-app.use(express.static(path.join(import.meta.dirname, 'public')));
+// Serve static files (HTML interface) - MUST be after API routes.
+// no-cache makes the browser check back on every load (a cheap 304 thanks to
+// the ETag) instead of running an old page or script after an add-on update -
+// the Home Assistant phone app in particular has no easy hard refresh.
+app.use(express.static(path.join(import.meta.dirname, 'public'), {
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache')
+}));
 
 // Multer error handling middleware
 app.use((err, req, res, next) => {

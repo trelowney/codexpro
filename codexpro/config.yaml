@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.4.0"
+version: "1.5.0"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
@@ -18,16 +18,20 @@ boot: auto
 # 7681 and is proxied by the web interface, so ingress only needs one port.
 ingress: true
 ingress_port: 7680
+# Without this the Supervisor reads each request body into memory first and
+# turns away anything over 16 MiB before the add-on sees it, so uploads between
+# 16 MB and our 50 MB limit failed through the panel. Streamed bodies arrive
+# chunked; multer and express.raw count the bytes and enforce their own limits.
+ingress_stream: true
 panel_icon: mdi:robot-industrial
 panel_title: "Codex Pro"
 panel_admin: true
 
+# The port descriptions (with the NO LOGIN warning) live in translations/*.yaml
+# under "network" - Home Assistant shows those instead of ports_description.
 ports:
   7680/tcp: null
   7681/tcp: null
-ports_description:
-  7680/tcp: "Web interface without the sidebar. Not needed - the panel works without it. NO LOGIN: anyone who can reach this port gets a root shell. Leave empty unless the network is fully trusted."
-  7681/tcp: "Bare terminal without the sidebar. Not needed - the panel works without it. NO LOGIN: anyone who can reach this port gets a root shell. Leave empty unless the network is fully trusted."
 
 # Folder access, in the dict form current Supervisor documents. /config is
 # created inside the container as a shortcut to /homeassistant so both path

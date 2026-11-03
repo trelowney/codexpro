@@ -6,6 +6,24 @@
 
 set -u
 
+# Ctrl+C here (the phone key bar has a ^C key) must not end the menu: that
+# ends the tmux session, and the terminal goes blank until it reconnects to
+# a new one. Instead the question being asked is shown again, so nobody is
+# left at an empty line. Programs started from the menu get Ctrl+C as usual
+# (bash resets the trap for them).
+ASKING=""
+trap 'printf "\n%s" "${ASKING}"' INT
+
+# ask "<prompt>": print it and read one line into $REPLY
+ask() {
+    ASKING="$1"
+    printf '%s' "${ASKING}"
+    read -r
+    local status=$?
+    ASKING=""
+    return ${status}
+}
+
 WORKDIR="/homeassistant"
 cd "${WORKDIR}" 2>/dev/null || cd /
 
@@ -31,8 +49,8 @@ reset_terminal() {
 }
 
 pause() {
-    printf '\n%s' "Press Enter to go back to the menu... "
-    read -r _ || true
+    printf '\n'
+    ask "Press Enter to go back to the menu... " || true
 }
 
 codex_flags() {
@@ -140,8 +158,10 @@ first_run_hint() {
 
   Press Enter to start the sign-in, or type 'skip' to see the menu first.
 EOF
-    printf '\n  > '
-    read -r answer || answer=""
+    printf '\n'
+    # A closed input: show the menu rather than start the sign-in
+    local answer
+    ask "  > " && answer="${REPLY}" || answer="skip"
     case "${answer}" in
         skip|s|S) return 0 ;;
         *) codex-login ;;
@@ -173,8 +193,8 @@ while true; do
     8) What can I do here?
     9) Self-check (run this if something behaves oddly)
 EOF
-    printf '\n  Type a number and press Enter: '
-    read -r choice || choice=""
+    printf '\n'
+    ask "  Type a number and press Enter: " && choice="${REPLY}" || choice=""
 
     case "${choice}" in
         1) clear; run_codex ;;

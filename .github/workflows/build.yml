@@ -39,6 +39,14 @@ jobs:
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "Add-on version: ${version}"
 
+      # Every option and port needs a label and help text in every language,
+      # or the Configuration tab shows raw keys nobody understands.
+      - name: Check option labels and help text
+        shell: bash
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip3 install --quiet --break-system-packages pyyaml
+          python3 scripts/check-addon-metadata.py
+
       - name: Prepare build matrix
         id: matrix
         uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.03.2

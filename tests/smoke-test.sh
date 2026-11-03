@@ -80,6 +80,11 @@ echo new > "${WORK}/data/images/pasted-2.png"
 # of a backup
 NOTES="home/zapisy/2026-09-01-porada.md codex/zapisy.md zapisy/topeni.md uploads/20260901-120000-poznamky.md images/poznamky.md .cache/poznamky.md .cache/other/notes.md home/.local/share/notes.md npm-notes/n.md"
 for n in ${NOTES}; do mkdir -p "$(dirname "${WORK}/data/${n}")"; echo "# zapis ${n}" > "${WORK}/data/${n}"; touch -d '400 days ago' "${WORK}/data/${n}"; done
+# The user's own tmux settings (1.5.0): kept and applied. The direct
+# container gets a broken one, which must not stop the session coming up.
+mkdir -p "${WORK}/data/home" "${WORK}/direct-data/home"
+printf "set -g status-left '[mine] '\n" > "${WORK}/data/home/.tmux.local.conf"
+printf "set -g status-left '[x] '\nthis-is-not-a-tmux-command\n" > "${WORK}/direct-data/home/.tmux.local.conf"
 cat > "${WORK}/data/options.json" <<'JSON'
 {
   "auto_launch_codex": true,
@@ -317,6 +322,46 @@ check "old browser-only voice code is gone" sh -c "! docker exec ${NAME} curl -s
 check "voice off when no engine is set"     sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/api/voice/config | grep -q '\"enabled\":false,\"configured\":false'"
 check "transcribe refuses other sites"      test "$(docker exec ${NAME} curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/octet-stream' --data-binary xx http://127.0.0.1:7680/api/voice/transcribe)" = "403"
 check "  ... no engine: says where to set it" sh -c "docker exec ${NAME} curl -s -X POST -H 'X-Voice-Request: 1' -H 'Content-Type: application/octet-stream' --data-binary xx http://127.0.0.1:7680/api/voice/transcribe | grep -q 'Configuration'"
+
+echo "1.5.0: terminal start, caching, big uploads, keys:"
+check "page is served no-cache"             sh -c "docker exec ${NAME} curl -sI http://127.0.0.1:7680/ | grep -qi '^cache-control: no-cache'"
+check "  ... scripts too"                   sh -c "docker exec ${NAME} curl -sI http://127.0.0.1:7680/terminal-clipboard.js | grep -qi '^cache-control: no-cache'"
+check "  ... and unchanged files answer 304" sh -c "etag=\$(docker exec ${NAME} curl -sI http://127.0.0.1:7680/key-bar.js | sed -n 's/^[Ee][Tt][Aa][Gg]: //p' | tr -d '\r'); test -n \"\$etag\" && test \"\$(docker exec ${NAME} curl -s -o /dev/null -w '%{http_code}' -H \"If-None-Match: \$etag\" http://127.0.0.1:7680/key-bar.js)\" = 304"
+check "API answers are not touched"         sh -c "! docker exec ${NAME} curl -sI http://127.0.0.1:7680/health | grep -qi '^cache-control: no-cache'"
+check "phone key bar in the page"           sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/ | grep -q 'id=\"key-bar\"' && docker exec ${NAME} curl -sf http://127.0.0.1:7680/key-bar.js | grep -q CodexKeyBar"
+check "Shift+Enter sends Ctrl+J"            sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/terminal-clipboard.js | grep -q \"SHIFT_ENTER_INPUT = '.n';\""
+check "ingress_stream is on"                python3 -c "import yaml,sys; c=yaml.safe_load(open('${REPO_ROOT}/codexpro/config.yaml')); sys.exit(0 if c.get('ingress_stream') is True else 1)"
+check "every option and port is described"  python3 "${REPO_ROOT}/scripts/check-addon-metadata.py"
+check "tmux: own settings applied"          sh -c "docker exec ${NAME} tmux show -gv status-left | grep -q mine"
+check "tmux: focus events on"               sh -c "docker exec ${NAME} tmux show -gv focus-events | grep -qx on"
+check "tmux: own file left alone"           docker exec "${NAME}" grep -q mine /data/home/.tmux.local.conf
+check "tmux: broken own file, session still up" docker exec "${DIRECT}" tmux has-session -t codex
+check "  ... and the add-on's settings still apply" sh -c "docker exec ${DIRECT} tmux show -gv status-right | grep -q 'Codex Pro'"
+# The phone key bar has a ^C key: on the welcome screen and in the menu it
+# must not end the session, and the question must be asked again
+check "welcome: Ctrl+C keeps the session, asks again" docker exec "${NAME}" sh -c 's=$(tmux display -p -t codex "#{pid} #{pane_pid}"); tmux send-keys -t codex C-c; sleep 1; test "$(tmux display -p -t codex "#{pid} #{pane_pid}")" = "$s" && tmux capture-pane -p -t codex | grep -v "^$" | tail -1 | grep -qE "^ *> *$"'
+check "menu: Ctrl+C keeps the session, asks again"    docker exec "${NAME}" sh -c 'tmux send-keys -t codex skip Enter; sleep 2; s=$(tmux display -p -t codex "#{pid} #{pane_pid}"); tmux send-keys -t codex C-c; sleep 1; tmux send-keys -t codex C-c; sleep 1; test "$(tmux display -p -t codex "#{pid} #{pane_pid}")" = "$s" && tmux capture-pane -p -t codex | grep -v "^$" | tail -1 | grep -q "Type a number and press Enter: *$"'
+# Uploads streamed like ingress_stream delivers them: chunked, no length
+docker exec "${NAME}" sh -c "head -c 20971520 /dev/urandom > /tmp/20m.bin"
+docker exec "${NAME}" sh -c "cd /data/uploads && find . -type f -exec md5sum {} + | sort" > "${WORK}/uploads-before.txt"
+check "streamed 20 MB upload arrives whole" sh -c "test \"\$(docker exec ${NAME} sh -c 'curl -s -m 120 -H \"Transfer-Encoding: chunked\" -F \"file=@/tmp/20m.bin;filename=video.bin\" http://127.0.0.1:7680/upload | grep -o \"/data/uploads/[^\\\"]*\" | xargs md5sum | cut -c1-32')\" = \"\$(docker exec ${NAME} sh -c 'md5sum < /tmp/20m.bin | cut -c1-32')\""
+check "streamed over 50 MB refused with advice" sh -c "docker exec ${NAME} curl -s -m 120 -H 'Transfer-Encoding: chunked' -F 'file=@/tmp/toobig.bin;filename=streamhuge.bin' http://127.0.0.1:7680/upload | grep -q 'larger than 50 MB'"
+check "  ... and leaves nothing behind"     docker exec "${NAME}" sh -c "! ls /data/uploads/*streamhuge* 2>/dev/null | grep -q ."
+docker exec "${NAME}" sh -c "cd /data/uploads && find . -type f -exec md5sum {} + | sort" > "${WORK}/uploads-after.txt"
+check "earlier uploads untouched (none lost or changed)" sh -c "test -s '${WORK}/uploads-before.txt' && test -z \"\$(comm -23 '${WORK}/uploads-before.txt' '${WORK}/uploads-after.txt')\""
+check "streamed voice recording accepted"   sh -c "docker exec ${NAME} sh -c 'head -c 64000 /dev/zero | curl -s -X POST -H \"X-Voice-Request: 1\" -H \"Content-Type: application/octet-stream\" -H \"Transfer-Encoding: chunked\" --data-binary @- http://127.0.0.1:7680/api/voice/transcribe' | grep -q Configuration"
+# A second web service whose terminal is not up yet (port 7699 is free)
+docker exec -d "${NAME}" sh -c "cd /opt/image-service && IMAGE_SERVICE_PORT=7690 TTYD_PORT=7699 UPLOAD_DIR=/tmp/up2 exec node server.mjs"
+for _ in $(seq 1 20); do docker exec "${NAME}" curl -sf http://127.0.0.1:7690/health >/dev/null 2>&1 && break; sleep 0.5; done
+check "terminal not up: 'Starting the terminal'" sh -c "docker exec ${NAME} curl -s -H 'Accept: text/html' http://127.0.0.1:7690/terminal/ | grep -q 'Starting the terminal'"
+check "  ... as 503, never cached"          sh -c "docker exec ${NAME} curl -s -o /dev/null -D - -H 'Accept: text/html' http://127.0.0.1:7690/terminal/ | grep -q '^HTTP/1.1 503' && docker exec ${NAME} curl -s -o /dev/null -D - -H 'Accept: text/html' http://127.0.0.1:7690/terminal/ | grep -qi 'cache-control: no-store'"
+check "  ... and says what to do if it lasts" sh -c "docker exec ${NAME} curl -s -H 'Accept: text/html' http://127.0.0.1:7690/terminal/ | grep -q 'Try again'"
+check "  ... other requests still get 502"  test "$(docker exec ${NAME} curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' http://127.0.0.1:7690/terminal/token)" = "502"
+docker exec -d "${NAME}" sh -c "mkdir -p /tmp/fake-ttyd && echo '<title>ttyd</title>' > /tmp/fake-ttyd/index.html && cd /tmp/fake-ttyd && exec python3 -m http.server 7699 --bind 127.0.0.1"
+for _ in $(seq 1 20); do docker exec "${NAME}" curl -sf http://127.0.0.1:7699/ >/dev/null 2>&1 && break; sleep 0.5; done
+check "  ... once it is up, the terminal page comes through" sh -c "docker exec ${NAME} curl -sf -H 'Accept: text/html' http://127.0.0.1:7690/terminal/ | grep -q ttyd"
+docker exec "${NAME}" sh -c "pkill -f 'http.server 7699'; pkill -f 'IMAGE_SERVICE_PORT=7690' ; for p in \$(pgrep -f 'node server.mjs'); do grep -q 7690 /proc/\$p/environ 2>/dev/null && kill \$p; done" >/dev/null 2>&1
+check "the real panel still answers"        docker exec "${NAME}" curl -sf http://127.0.0.1:7680/health
 
 echo "Changes tab (git):"
 # The fake .git from the sidebar checks is not a repository; start clean

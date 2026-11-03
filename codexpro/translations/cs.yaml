@@ -85,5 +85,11 @@ configuration:
       Jazyk, kterým budete mluvit, třeba cs, en nebo de-DE. Prázdné = jazyk
       prohlížeče. Dá se změnit i přímo v okně diktování před nahráváním.
 network:
-  7680/tcp: Webové rozhraní (při použití panelu v postranní liště netřeba)
-  7681/tcp: Terminál (při použití panelu v postranní liště netřeba)
+  7680/tcp: >-
+    Webové rozhraní bez postranní lišty. Netřeba - panel funguje i bez něj.
+    BEZ PŘIHLÁŠENÍ: kdokoli, kdo se na tento port dostane, má root shell.
+    Nech prázdné, pokud síti úplně nevěříš.
+  7681/tcp: >-
+    Samotný terminál bez postranní lišty. Netřeba - panel funguje i bez něj.
+    BEZ PŘIHLÁŠENÍ: kdokoli, kdo se na tento port dostane, má root shell.
+    Nech prázdné, pokud síti úplně nevěříš.

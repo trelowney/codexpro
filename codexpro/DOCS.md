@@ -122,6 +122,12 @@ Uploads are kept and included in Home Assistant backups. For anything bigger
 than 50 MB, put it in `/share` (for example with the Samba add-on) and give
 Codex that path.
 
+If you open Home Assistant through your own reverse proxy (NGINX, Caddy, a
+tunnel), that proxy has its own upload limit and applies it first. NGINX
+allows only 1 MB unless told otherwise: if bigger uploads fail with
+"413 Request Entity Too Large", set `client_max_body_size 55m;` for Home
+Assistant there.
+
 ## Dictating (🎤 Voice Input)
 
 🎤 **Voice Input** in the header opens a window: press **Start Recording**,
@@ -146,6 +152,21 @@ to use it. One recording is at most 60 seconds. It stays in memory, goes only
 to the configured Home Assistant engine and is never saved or logged; the
 add-on's Home Assistant token never reaches the browser. If something is
 missing, the window says what to do.
+
+## Typing in the terminal
+
+- **Shift+Enter** starts a new line in the prompt without sending it (it types
+  Ctrl+J, which Codex reads as a new line). Ctrl+J itself does the same.
+- **On a phone or tablet** a row of keys appears above the on-screen keyboard:
+  **Esc** (stop Codex, close a menu), **↑ ↓** (choose in a menu, earlier
+  prompts), **Tab**, **⇧Tab** (switch mode), **^C**, **⇧↵** (new line without
+  sending) and **↵** (send). Two Ctrl+C in a row quit Codex, and a double tap
+  is easy on a phone, so after one tap the ^C key shows *wait* for two seconds.
+  The row is hidden on computers and on tablets with a trackpad.
+- **Your own tmux settings** go in `/data/home/.tmux.local.conf`.
+  `/data/home/.tmux.conf` is rewritten on every start, so changes there are
+  lost; the local file is read last, so its settings win. Restart the add-on
+  to apply them.
 
 ## Copying text out of the terminal
 

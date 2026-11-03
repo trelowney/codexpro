@@ -88,5 +88,11 @@ configuration:
       the browser's language. It can also be changed in the voice window
       before recording.
 network:
-  7680/tcp: Web interface (not needed when you use the sidebar panel)
-  7681/tcp: Terminal (not needed when you use the sidebar panel)
+  7680/tcp: >-
+    Web interface without the sidebar. Not needed - the panel works without it.
+    NO LOGIN: anyone who can reach this port gets a root shell. Leave empty
+    unless the network is fully trusted.
+  7681/tcp: >-
+    Bare terminal without the sidebar. Not needed - the panel works without it.
+    NO LOGIN: anyone who can reach this port gets a root shell. Leave empty
+    unless the network is fully trusted.

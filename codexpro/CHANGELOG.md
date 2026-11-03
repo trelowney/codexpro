@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.5.0] - 2026-11-02
+
+Easier on a phone, and no more stuck terminal or failed big uploads.
+
+### Added
+
+- **Keys for a phone or tablet**: a row above the on-screen keyboard with
+  Esc, ↑, ↓, Tab, ⇧Tab, ^C, a new-line key and Enter - the keys Codex needs
+  for stopping, menus and multi-line prompts, which a phone keyboard lacks.
+  Tapping one keeps the keyboard open. ^C waits two seconds after a tap,
+  because two in a row quit Codex. Shown only when a touch screen is the
+  main pointer. Arrows also work in full-screen programs such as less and vim
+- **Shift+Enter starts a new line** in the prompt instead of sending it
+- **Your own tmux settings** in `/data/home/.tmux.local.conf`, kept across
+  restarts and read last so they win. tmux now passes focus events through
+
+### Fixed
+
+- **"Failed to connect to terminal" right after starting**: the panel opened
+  before the terminal was up and stayed on that message until you left the
+  page. It now shows "Starting the terminal…" and continues by itself as soon
+  as the terminal is ready; if that takes unusually long it says what to do
+- **Uploads between 16 MB and 50 MB failed** in the panel: Home Assistant
+  turned them away before they reached the add-on. They are now streamed
+  through. DOCS explain the extra limit of a reverse proxy
+- **After an update the browser could keep running the old panel** until a
+  forced refresh (hard to do in the Home Assistant app). The page now always
+  checks for a newer version
+- **Ctrl+C at the Codex Pro menu ended the session**: the terminal went
+  blank for a few seconds and came back as a new one. Now the menu (or the
+  welcome screen) stays and asks its question again. Ctrl+C inside Codex
+  works as before
+- The **Network** tab now shows the full warning for ports 7680 and 7681
+  (no login, root shell); before, Home Assistant showed only a short label
+
+### Changed
+
+- The build checks that every option and port has a name and help text in
+  every language, so a new option can't appear as a raw key
+
+Ideas from esjavadex/claude-code-ha 2.4.1-2.4.6.
+
 ## [1.4.0] - 2026-11-01
 
 Dictation through Home Assistant, and a supported base system.
