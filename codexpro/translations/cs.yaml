@@ -34,6 +34,14 @@ configuration:
       Zapnuto: Codex si umí vypsat entity a volat služby, nejen číst YAML.
       Vypnuto: pracuje jen se soubory. Vypni, když se v logu doplňku objevují
       chyby s "MCP".
+  home_assistant_tools:
+    name: Kontrolovat YAML automaticky a naučit Codex aktuální Home Assistant
+    description: >-
+      Zapnuto (doporučeno): každý YAML soubor, který Codex změní, se hned
+      zkontroluje. Když je rozbitý, Codex se to dozví a opraví ho. Codex navíc zná
+      aktuální zápis Home Assistantu a na větu „zkontroluj mi konfiguraci“ udělá
+      celou kontrolu. Vypnuto: nic z toho, Codex vychází jen z toho, co sám umí.
+      Vaše soubory to neovlivní ani v jednom případě.
   openai_api_key:
     name: OpenAI API klíč (nepovinné)
     description: >-

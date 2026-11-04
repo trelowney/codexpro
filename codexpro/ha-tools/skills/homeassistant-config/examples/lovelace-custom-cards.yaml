@@ -1,0 +1,353 @@
+# Custom card examples for Home Assistant 2026.x
+#
+# Installing: since 2026.11 HACS is built in as Settings > Marketplace. On older
+# versions install HACS. The Marketplace / HACS adds the JS resource for you on
+# UI-managed dashboards. With `lovelace: resource_mode: yaml`, list it yourself:
+#
+#   lovelace:
+#     resource_mode: yaml
+#     resources:
+#       - url: /hacsfiles/lovelace-mushroom/mushroom.js
+#         type: module
+#
+# Check built-ins first. Most reasons to install a custom card are gone:
+#
+#   Wanted                               Built-in since
+#   ------------------------------------ -----------------------------------
+#   Sliders / buttons on a light card    tile + light-brightness, light-color-temp, light-color-favorites
+#   Thermostat with mode buttons         tile + climate-hvac-modes, target-temperature
+#   Media controls                       tile + media-player-playback, media-player-volume-slider
+#   Chips row at the top                 view badges + view header (2024.8 / 2025.3)
+#   Small graph on a card                tile + trend-graph feature, statistics-graph
+#   layout-card / grid layouts           sections view + grid_options (12 columns)
+#   Hide a card on a condition           visibility: on cards, badges and sections
+#   auto-entities "all lights on"        entity-filter card, `entities` section strategy
+#   "Run script" button                  shortcut card / badge, heading button badge
+#   Clock / date                         clock card, date card
+#   Alert / status pulse                 alert card and alert badge (2026.11)
+#
+# Still worth a custom card: free-form layouts and JS logic (button-card), CSS
+# changes the theme cannot do (card-mod), Mushroom's look if you already use it.
+#
+# This file is a YAML-mode dashboard (one sections view) so every example can
+# be validated and pasted as is. `button_card_templates` must sit at the top
+# level of the dashboard, next to `views:`.
+
+title: Custom card examples
+
+# =============================================================================
+# button-card templates (custom-cards/button-card 7.x)
+# =============================================================================
+button_card_templates:
+  room_button:
+    section_mode: true              # makes the card follow grid_options in sections
+    show_state: true
+    tap_action:
+      action: toggle
+    hold_action:
+      action: more-info
+    styles:
+      card:
+        - border-radius: var(--ha-card-border-radius, 12px)
+        - padding: 12px
+      name:
+        - font-weight: var(--ha-font-weight-bold)
+    state:
+      - value: "on"
+        styles:
+          icon:
+            - color: var(--state-light-active-color)
+
+views:
+  - title: Custom cards
+    path: custom
+    icon: mdi:puzzle
+    type: sections
+    max_columns: 3
+    sections:
+      # =======================================================================
+      # MUSHROOM (piitaya/lovelace-mushroom 5.x)
+      # =======================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: Mushroom
+
+          # Entity card. Built-in alternative: a tile card.
+          - type: custom:mushroom-entity-card
+            entity: sensor.living_room_temperature
+            name: Living room
+            icon: mdi:thermometer
+            icon_color: blue
+            primary_info: name
+            secondary_info: state
+            grid_options:
+              columns: 6
+            tap_action:
+              action: more-info
+
+          # Light card. Built-in alternative: tile + light-brightness feature.
+          - type: custom:mushroom-light-card
+            entity: light.bedroom
+            name: Bedroom
+            use_light_color: true
+            show_brightness_control: true
+            show_color_temp_control: true
+            collapsible_controls: true
+            grid_options:
+              columns: 6
+            tap_action:
+              action: toggle
+            hold_action:
+              action: more-info
+
+          # Template card (Mushroom 5 rewrite, built on the tile card): takes
+          # the same `features:` as tiles. The old card is now
+          # `custom:mushroom-legacy-template-card` (uses icon_color, layout).
+          - type: custom:mushroom-template-card
+            entity: light.living_room
+            icon: mdi:sofa
+            color: "{{ 'amber' if is_state(entity, 'on') else 'disabled' }}"
+            primary: Living room
+            secondary: >-
+              {% if is_state(entity, 'on') %}
+                {{ (state_attr(entity, 'brightness') | int(0) / 255 * 100) | round }} %
+              {% else %}
+                Off
+              {% endif %}
+            badge_icon: "{{ 'mdi:motion-sensor' if is_state('binary_sensor.living_room_motion', 'on') else '' }}"
+            badge_color: green
+            features:
+              - type: light-brightness
+            grid_options:
+              columns: 12
+            tap_action:
+              action: toggle
+            icon_tap_action:
+              action: more-info
+
+          # Chips card. Built-in alternative: view badges (shortcut badges for
+          # actions) and the view header.
+          - type: custom:mushroom-chips-card
+            alignment: center
+            grid_options:
+              columns: 12
+            chips:
+              - type: weather
+                entity: weather.home
+                show_temperature: true
+                show_conditions: true
+              - type: template
+                icon: mdi:lightbulb-group
+                content: "{{ states.light | selectattr('state', 'eq', 'on') | list | count }} on"
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-home/lights
+              - type: action
+                icon: mdi:power
+                tap_action:
+                  action: perform-action
+                  perform_action: script.turn_on
+                  target:
+                    entity_id: script.all_off
+                  confirmation:
+                    text: Turn everything off?
+              # Conditional chip with the current condition syntax.
+              - type: conditional
+                conditions:
+                  - condition: state
+                    entity: binary_sensor.front_door
+                    state: "on"
+                chip:
+                  type: entity
+                  entity: binary_sensor.front_door
+                  icon_color: red
+
+      # =======================================================================
+      # BUTTON-CARD (custom-cards/button-card 7.x)
+      # Use it for JS templates and free layouts. For a plain button use the
+      # built-in button, tile or shortcut card.
+      # =======================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: button-card
+
+          # Uses the template above. section_mode comes from the template.
+          - type: custom:button-card
+            template: room_button
+            entity: light.kitchen
+            name: Kitchen
+            icon: mdi:countertop
+            grid_options:
+              columns: 6
+              rows: 2
+
+          - type: custom:button-card
+            template: room_button
+            entity: light.hallway
+            name: Hallway
+            icon: mdi:door
+            grid_options:
+              columns: 6
+              rows: 2
+
+          # Runs an action: perform-action (call-service still works in
+          # button-card but is deprecated in Home Assistant).
+          - type: custom:button-card
+            section_mode: true
+            name: Movie time
+            icon: mdi:movie-open
+            grid_options:
+              columns: 12
+              rows: 1
+            tap_action:
+              action: perform-action
+              perform_action: scene.turn_on
+              target:
+                entity_id: scene.movie_time
+            styles:
+              card:
+                - padding: 8px
+
+          # JS template label and custom fields in a grid layout.
+          - type: custom:button-card
+            section_mode: true
+            entity: climate.living_room
+            show_name: false
+            show_icon: false
+            show_state: false
+            grid_options:
+              columns: 12
+              rows: 2
+            tap_action:
+              action: more-info
+            custom_fields:
+              title: Heating
+              current: "[[[ return (entity.attributes.current_temperature ?? '-') + ' °C'; ]]]"
+              target: "[[[ return 'Target ' + (entity.attributes.temperature ?? '-') + ' °C'; ]]]"
+              mode: "[[[ return entity.state; ]]]"
+            styles:
+              grid:
+                - grid-template-areas: '"title mode" "current target"'
+                - grid-template-columns: 1fr 1fr
+              custom_fields:
+                title:
+                  - justify-self: start
+                  - font-weight: var(--ha-font-weight-bold)
+                mode:
+                  - justify-self: end
+                  - text-transform: capitalize
+                  - color: var(--secondary-text-color)
+                current:
+                  - justify-self: start
+                  - font-size: var(--ha-font-size-2xl)
+                target:
+                  - justify-self: end
+                  - color: var(--secondary-text-color)
+
+      # =======================================================================
+      # CARD-MOD (thomasloven/lovelace-card-mod 4.x)
+      # Only for CSS that themes cannot reach. Use --ha-* theme variables;
+      # paper-* variables were removed in 2025.5.
+      # =======================================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: card-mod and graphs
+
+          # Built-in tile restyled: red border while the alarm is triggered.
+          - type: tile
+            entity: alarm_control_panel.home
+            name: Alarm
+            grid_options:
+              columns: 12
+            features:
+              - type: alarm-modes
+                modes:
+                  - armed_away
+                  - disarmed
+            card_mod:
+              style: |
+                ha-card {
+                  {% if is_state('alarm_control_panel.home', 'triggered') %}
+                  border: 2px solid var(--error-color);
+                  {% endif %}
+                }
+
+          # Style a single row inside an entities card: card_mod on the row,
+          # targeting :host.
+          - type: entities
+            title: Network
+            grid_options:
+              columns: 12
+            entities:
+              - entity: sensor.internet_download
+                name: Download
+              - entity: binary_sensor.internet_up
+                name: Internet
+                card_mod:
+                  style: |
+                    :host {
+                      color: {{ 'var(--success-color)' if is_state('binary_sensor.internet_up', 'on') else 'var(--error-color)' }};
+                    }
+
+          # mini-graph-card (kalkih). Built-in alternatives: statistics-graph,
+          # history-graph, or a tile with the trend-graph feature.
+          - type: custom:mini-graph-card
+            name: Temperature
+            hours_to_show: 24
+            points_per_hour: 2
+            line_width: 2
+            grid_options:
+              columns: 12
+            entities:
+              - entity: sensor.indoor_temperature
+                name: Indoor
+                color: "#e74c3c"
+              - entity: sensor.outdoor_temperature
+                name: Outdoor
+                color: "#3498db"
+            show:
+              legend: true
+              fill: fade
+
+          # auto-entities (thomasloven). Built-in alternatives: entity-filter
+          # card, or an `entities` section strategy (entity_types + target).
+          - type: custom:auto-entities
+            show_empty: false
+            grid_options:
+              columns: 12
+            card:
+              type: entities
+              title: Lights on
+            filter:
+              include:
+                - domain: light
+                  state: "on"
+              exclude:
+                - entity_id: light.night_light
+            sort:
+              method: name
+
+          # The same list with built-ins only.
+          - type: entity-filter
+            grid_options:
+              columns: 12
+            entities:
+              - light.kitchen
+              - light.hallway
+              - light.bedroom
+            conditions:
+              - condition: state
+                state: "on"
+            card:
+              type: entities
+              title: Lights on (built-in)
+
+# Removed from the previous version of this file:
+# - custom:masonry-layout / layout-card: sections views do this natively.
+# - swipe-card: dropped from the examples. Check in the Marketplace that it is
+#   still maintained before relying on it.
+# - mushroom-media-player-card / climate-card / cover-card / fan-card: tile
+#   features cover these. They still exist in Mushroom if you want the look.

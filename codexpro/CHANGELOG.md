@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.0] - 2026-11-04
+
+Codex checks the YAML it writes, and knows current Home Assistant.
+
+### Added
+
+- **Every YAML file Codex changes is checked right away**: syntax, tabs, duplicate
+  keys, and syntax your Home Assistant version no longer accepts. Codex is told at
+  once and repairs a broken file in the same answer. Works for its own edits and
+  for shell commands
+- **Home Assistant skills.** Codex can read a guide to current syntax before
+  writing configuration. Say "check my configuration" or type `$ha-check`;
+  `$ha-find-duplicates` and `$ha-upgrade` are there too
+- **Option `home_assistant_tools`** (on by default) turns all of it off.
+  `codex-doctor` tries the check on a broken file and reports the result
+
+Your files in `/data` are not touched. The skills and the checks come from
+[ESJavadex/claude-homeassistant-plugins](https://github.com/ESJavadex/claude-homeassistant-plugins) (MIT).
+
 ## [1.6.3] - 2026-11-04
 
 An old update no longer pins Codex, and a quieter status bar.

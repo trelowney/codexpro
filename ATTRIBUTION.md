@@ -46,6 +46,16 @@ Taken from it:
   `voice-recorder-worklet.js`, 2.4.0, with rewritten messages) and the
   Alpine 3.24 base with `apk upgrade` at build time (2.3.8)
 
+## ESJavadex/claude-homeassistant-plugins
+
+<https://github.com/ESJavadex/claude-homeassistant-plugins> — MIT (the licence
+is in `codexpro/ha-tools/LICENSE.upstream`, the version in `UPSTREAM` beside it)
+
+Taken from it in 1.7.0: the Home Assistant skills with their references and
+examples, the YAML, dashboard and duplicate checkers, and the YAML hook
+(`validate_ha_yaml.py`). `scripts/import-ha-tools.py` shows what is reworded for
+Codex; `codex_yaml_check.py` is ours and connects the check to Codex's hooks.
+
 ## What is new here
 
 - Codex sessions survive a browser reload, an ingress drop and a Home Assistant

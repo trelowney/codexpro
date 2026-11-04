@@ -1,0 +1,229 @@
+# scripts.yaml - example scripts in current (2026) syntax
+#
+# - the key is the script's object ID: script.<key>
+# - fields describe what callers may pass (shown in the UI with selectors)
+# - sequence uses the same steps as automation actions
+
+# Bedtime routine; called by the "Voice - bedtime" automation.
+bedtime_routine:
+  alias: "Bedtime routine"
+  description: "Lights off except night lights, lock up, optionally set a wake time."
+  icon: mdi:bed
+  mode: single
+  fields:
+    wake_time:
+      name: "Wake time"
+      description: "Optional time like 07:00. Leave empty to keep the current alarm."
+      required: false
+      example: "07:00"
+      selector:
+        text:
+  sequence:
+    - action: light.turn_off
+      target:
+        floor_id: ground_floor
+        exclude:                 # 2026.11
+          label_id: night_light
+    - action: lock.lock
+      target:
+        entity_id: lock.front_door
+    - if:
+        - condition: template
+          value_template: "{{ wake_time | default('') | length > 0 }}"
+      then:
+        - action: input_datetime.set_datetime
+          target:
+            entity_id: input_datetime.wake_up
+          data:
+            time: "{{ wake_time }}"
+
+# Morning routine with a number field.
+morning_routine:
+  alias: "Morning routine"
+  description: "Bedroom lights up slowly, heating to comfort temperature."
+  icon: mdi:weather-sunset-up
+  mode: single
+  fields:
+    brightness:
+      name: "Brightness"
+      description: "Target brightness in percent."
+      default: 80
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+  sequence:
+    - action: light.turn_on
+      target:
+        area_id: bedroom
+      data:
+        brightness_pct: "{{ brightness | default(80) }}"
+        color_temp_kelvin: 3500
+        transition: 300
+    - action: climate.set_temperature
+      target:
+        entity_id: climate.living_room
+      data:
+        temperature: 21
+
+# Leaving home: independent steps in parallel, then lock.
+goodbye_routine:
+  alias: "Goodbye routine"
+  icon: mdi:home-export-outline
+  mode: single
+  sequence:
+    - parallel:
+        - action: light.turn_off
+          target:
+            entity_id: all
+        - action: media_player.turn_off
+          target:
+            floor_id: ground_floor
+        - action: climate.set_preset_mode
+          target:
+            entity_id: climate.living_room
+          data:
+            preset_mode: away
+    - action: lock.lock
+      target:
+        entity_id: lock.front_door
+    - action: notify.mobile_app_anna_phone
+      data:
+        message: "House secured."
+
+# Flash lights a number of times; target comes from the caller.
+flash_lights:
+  alias: "Flash lights"
+  mode: parallel
+  max: 5
+  fields:
+    lights:
+      name: "Lights"
+      required: true
+      selector:
+        target:
+          entity:
+            - domain: light
+    times:
+      name: "Times"
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 10
+  sequence:
+    - repeat:
+        count: "{{ times | default(3) | int }}"
+        sequence:
+          - action: light.turn_on
+            target: "{{ lights }}"
+            data:
+              brightness_pct: 100
+          - delay:
+              milliseconds: 500
+          - action: light.turn_off
+            target: "{{ lights }}"
+          - delay:
+              milliseconds: 500
+
+# Notify several phones at once.
+notify_all:
+  alias: "Notify everyone"
+  mode: queued
+  fields:
+    title:
+      name: "Title"
+      default: "Home"
+      selector:
+        text:
+    message:
+      name: "Message"
+      required: true
+      selector:
+        text:
+          multiline: true
+  sequence:
+    - parallel:
+        - action: notify.mobile_app_anna_phone
+          data:
+            title: "{{ title }}"
+            message: "{{ message }}"
+        - action: notify.mobile_app_ben_phone
+          data:
+            title: "{{ title }}"
+            message: "{{ message }}"
+
+# Script that returns data to its caller (stop + response_variable).
+# Caller:
+#   - action: script.daily_briefing
+#     response_variable: briefing
+#   - action: notify.mobile_app_anna_phone
+#     data:
+#       message: "{{ briefing.text }}"
+daily_briefing:
+  alias: "Daily briefing"
+  mode: parallel
+  sequence:
+    - action: weather.get_forecasts
+      target:
+        entity_id: weather.home
+      data:
+        type: daily
+      response_variable: forecast
+    - action: calendar.get_events
+      target:
+        entity_id: calendar.family
+      data:
+        duration:
+          hours: 24
+      response_variable: agenda
+    - variables:
+        today: "{{ forecast['weather.home'].forecast[0] }}"
+        events: "{{ agenda['calendar.family'].events }}"
+        result:
+          text: >-
+            {{ today.condition }}, up to {{ today.temperature }}°.
+            {{ events | count }} event(s) today{{ ': ' ~ (events | map(attribute='summary') | join(', ')) if events else '.' }}
+          events: "{{ events | count }}"
+    - stop: "Briefing ready"
+      response_variable: result
+
+# Variable scoping (2025.4): a variables step in a nested block updates the
+# outer variable, so this counter works across repeat iterations.
+count_open_windows:
+  alias: "Count open windows"
+  mode: single
+  sequence:
+    - variables:
+        open_count: 0
+    - repeat:
+        for_each: "{{ label_entities('window_sensor') }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ is_state(repeat.item, 'on') }}"
+            then:
+              - variables:
+                  open_count: "{{ open_count + 1 }}"
+    - action: persistent_notification.create
+      data:
+        title: "Windows"
+        message: "{{ open_count }} window(s) open."
+
+# Start a vacuum only if it is docked; continue even if the notify fails.
+safe_vacuum_start:
+  alias: "Start vacuum if docked"
+  mode: single
+  sequence:
+    - condition: state
+      entity_id: vacuum.robot
+      state: "docked"
+    - action: vacuum.start
+      target:
+        entity_id: vacuum.robot
+    - action: notify.mobile_app_anna_phone
+      continue_on_error: true
+      data:
+        message: "Vacuum started."

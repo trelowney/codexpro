@@ -63,6 +63,9 @@ Three things about the existing Codex add-on made it painful. All three are fixe
 - **Files sidebar** — browse and preview the configuration, see what changed
   recently, and run Home Assistant's configuration check. **± Changes** shows
   what Codex changed.
+- **YAML check** — every YAML file Codex changes is checked at once, and Codex
+  repairs what is broken. It also knows current Home Assistant syntax; say "check
+  my configuration" for a full check.
 - **`codex-doctor`** — one command that checks sign-in, file access, the API, the
   configuration file, the session and free disk space.
 

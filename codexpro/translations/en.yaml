@@ -35,6 +35,14 @@ configuration:
       On: Codex can look up your entities and call services, not just read YAML
       files. Off: Codex only works with files. Turn it off if the add-on log
       shows errors mentioning MCP.
+  home_assistant_tools:
+    name: Check YAML automatically and teach Codex current Home Assistant
+    description: >-
+      On (recommended): every YAML file Codex changes is checked right away. If
+      it is broken, Codex is told and repairs it. Codex also knows current Home
+      Assistant syntax, and "check my configuration" runs a full check. Off:
+      none of that; Codex works only from what it already knows. Your files are
+      not affected either way.
   openai_api_key:
     name: OpenAI API key (optional)
     description: >-

@@ -1,0 +1,374 @@
+# automations.yaml - example automations in current (2026) syntax
+#
+# - action: (not service:), triggers:/conditions:/actions:, "- trigger:" (not platform:)
+# - every automation has a unique id so the UI editor can open it
+# - entity IDs, areas, floors and labels are examples; replace them with yours
+# - purpose-specific trigger IDs and options: https://www.home-assistant.io/triggers/
+
+# ---------------------------------------------------------------------------
+# Lighting
+# ---------------------------------------------------------------------------
+
+# Classic state trigger: motion light with a timeout. mode: restart restarts
+# the wait every time motion is seen again.
+- id: "living_room_motion_light"
+  alias: "Living room - motion light"
+  description: "Lights on with motion when it is dark, off after 5 minutes without motion."
+  mode: restart
+  max_exceeded: silent
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.living_room_motion
+      to: "on"
+  conditions:
+    - condition: numeric_state
+      entity_id: sensor.living_room_illuminance
+      below: 50
+  actions:
+    - action: light.turn_on
+      target:
+        area_id: living_room
+      data:
+        brightness_pct: "{{ 30 if now().hour >= 22 or now().hour < 7 else 80 }}"
+        color_temp_kelvin: "{{ 2700 if now().hour >= 20 or now().hour < 7 else 4000 }}"
+    - wait_for_trigger:
+        - trigger: state
+          entity_id: binary_sensor.living_room_motion
+          to: "off"
+          for: "00:05:00"
+      timeout: "01:00:00"
+      continue_on_timeout: true
+    - action: light.turn_off
+      target:
+        area_id: living_room
+
+# Purpose-specific trigger (2026.7 default): fires when the first light
+# downstairs turns on, whichever light it is. target is top-level, the
+# settings go under options.
+- id: "downstairs_first_light_on"
+  alias: "Downstairs - first light on, open the blinds a bit"
+  triggers:
+    - trigger: light.turned_on
+      target:
+        floor_id: downstairs
+      options:
+        behavior: first        # each (default) | first | all
+  conditions:
+    - condition: sun
+      after: sunrise
+      before: sunset
+  actions:
+    - action: cover.set_cover_position
+      target:
+        floor_id: downstairs
+        exclude:               # 2026.11: leave the guest bedroom alone
+          area_id: guest_bedroom
+      data:
+        position: 30
+
+# Purpose-specific condition: only if the hall light is on.
+- id: "hall_light_off_at_midnight"
+  alias: "Hall - light off at midnight"
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  conditions:
+    - condition: light.is_on
+      target:
+        entity_id: light.hall
+  actions:
+    - action: light.turn_off
+      target:
+        entity_id: light.hall
+      data:
+        transition: 10
+
+# ---------------------------------------------------------------------------
+# Presence
+# ---------------------------------------------------------------------------
+
+# zone.home holds the number of people at home.
+- id: "presence_everyone_left"
+  alias: "Presence - everyone left"
+  mode: single
+  triggers:
+    - trigger: numeric_state
+      entity_id: zone.home
+      below: 1
+      for: "00:05:00"
+  actions:
+    - action: light.turn_off
+      target:
+        entity_id: all
+    - action: climate.set_preset_mode
+      target:
+        entity_id: climate.living_room
+      data:
+        preset_mode: away
+    - action: lock.lock
+      target:
+        entity_id: lock.front_door
+
+- id: "presence_welcome_home"
+  alias: "Presence - welcome home after dark"
+  triggers:
+    - trigger: zone
+      entity_id:
+        - person.anna
+        - person.ben
+      zone: zone.home
+      event: enter
+  conditions:
+    - condition: sun
+      after: sunset
+      before: sunrise
+  actions:
+    - action: light.turn_on
+      target:
+        area_id: hallway
+      data:
+        brightness_pct: 100
+
+# ---------------------------------------------------------------------------
+# Climate
+# ---------------------------------------------------------------------------
+
+- id: "climate_window_pause"
+  alias: "Climate - pause heating while the window is open"
+  mode: restart
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.living_room_window
+      to: "on"
+      for: "00:02:00"
+  conditions:
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: climate.living_room
+          state: "off"
+  actions:
+    - variables:
+        previous_mode: "{{ states('climate.living_room') }}"
+    - action: climate.set_hvac_mode
+      target:
+        entity_id: climate.living_room
+      data:
+        hvac_mode: "off"
+    - wait_for_trigger:
+        - trigger: state
+          entity_id: binary_sensor.living_room_window
+          to: "off"
+          for: "00:01:00"
+      timeout: "04:00:00"
+    - action: climate.set_hvac_mode
+      target:
+        entity_id: climate.living_room
+      data:
+        hvac_mode: "{{ previous_mode }}"
+
+# ---------------------------------------------------------------------------
+# Maintenance
+# ---------------------------------------------------------------------------
+
+# Purpose-specific trigger: was battery.low before 2026.7.
+- id: "battery_became_low"
+  alias: "Batteries - notify when one becomes low"
+  mode: queued
+  triggers:
+    - trigger: battery.became_low
+      target:
+        label_id: battery_powered
+  actions:
+    # trigger.entity_id assumed; the trigger's docs page lists its variables:
+    # https://www.home-assistant.io/triggers/battery.became_low/
+    - action: notify.mobile_app_anna_phone
+      data:
+        title: "Battery low"
+        message: "{{ entity_name(trigger.entity_id) }} needs a new battery."
+
+# Purpose-specific trigger: was vacuum.docked before 2026.7.
+- id: "vacuum_back_on_dock"
+  alias: "Vacuum - report when back on the dock"
+  triggers:
+    - trigger: vacuum.returned_to_dock
+      target:
+        entity_id: vacuum.robot
+  actions:
+    - action: notify.mobile_app_anna_phone
+      data:
+        message: "The vacuum finished and is back on its dock."
+
+# Supervisor actions raise on failure since 2026.5. continue_on_error lets
+# the notification still go out.
+- id: "nightly_partial_backup"
+  alias: "System - nightly partial backup"
+  triggers:
+    - trigger: time
+      at: "03:30:00"
+  actions:
+    - action: hassio.backup_partial
+      data:
+        name: "nightly-{{ now().strftime('%Y-%m-%d') }}"
+        homeassistant: true
+      continue_on_error: true
+    - action: persistent_notification.create
+      data:
+        title: "Nightly backup"
+        message: "Backup step finished at {{ now().strftime('%H:%M') }}. Check Settings → System → Backups."
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+# Actionable notification. Action IDs include context.id so two runs never
+# answer each other's buttons.
+- id: "garage_open_ask_to_close"
+  alias: "Garage - ask to close after 30 minutes"
+  mode: single
+  triggers:
+    - trigger: state
+      entity_id: cover.garage
+      to: "open"
+      for: "00:30:00"
+  actions:
+    - variables:
+        action_close: "{{ 'CLOSE_' ~ context.id }}"
+        action_ignore: "{{ 'IGNORE_' ~ context.id }}"
+    - action: notify.mobile_app_anna_phone
+      data:
+        title: "Garage open"
+        message: "The garage has been open for 30 minutes."
+        data:
+          actions:
+            - action: "{{ action_close }}"
+              title: "Close"
+            - action: "{{ action_ignore }}"
+              title: "Leave open"
+    - wait_for_trigger:
+        - trigger: event
+          event_type: mobile_app_notification_action
+          event_data:
+            action: "{{ action_close }}"
+        - trigger: event
+          event_type: mobile_app_notification_action
+          event_data:
+            action: "{{ action_ignore }}"
+      timeout: "00:10:00"
+      continue_on_timeout: false
+    - if:
+        - condition: template
+          value_template: "{{ wait.trigger.event.data.action == action_close }}"
+      then:
+        - action: cover.close_cover
+          target:
+            entity_id: cover.garage
+
+# AI task (2025.8): describe who is at the door from a camera snapshot.
+# Needs an AI Task entity; entity_id can be left out if a default is set
+# in Settings → System → General.
+- id: "doorbell_ai_description"
+  alias: "Doorbell - describe the visitor"
+  mode: single
+  max_exceeded: silent
+  triggers:
+    - trigger: state
+      entity_id: event.front_doorbell
+      not_from: unavailable
+  actions:
+    - action: ai_task.generate_data
+      data:
+        task_name: "Doorbell visitor"
+        instructions: >-
+          This is the front door camera. Is a person there? If so, describe
+          them in one short sentence (clothes, carrying a parcel or not).
+        structure:
+          person_present:
+            description: "True if a person is visible"
+            required: true
+            selector:
+              boolean:
+          description:
+            description: "One short sentence about the visitor"
+            selector:
+              text:
+        attachments:
+          - media_content_id: media-source://camera/camera.front_door
+            media_content_type: image/jpeg
+      response_variable: result
+    - if:
+        - condition: template
+          value_template: "{{ result.data.person_present | default(false) }}"
+      then:
+        - action: notify.mobile_app_anna_phone
+          data:
+            title: "Someone at the door"
+            message: "{{ result.data.description | default('A person is at the door.') }}"
+
+# ---------------------------------------------------------------------------
+# Calendar and buttons
+# ---------------------------------------------------------------------------
+
+# Classic calendar trigger: offset is signed (negative = before the start).
+- id: "office_prepare_for_meeting"
+  alias: "Office - prepare 10 minutes before a meeting"
+  triggers:
+    - trigger: calendar
+      event: start
+      entity_id: calendar.work
+      offset: "-00:10:00"
+  conditions:
+    - condition: state
+      entity_id: person.anna
+      state: "home"
+  actions:
+    - action: light.turn_on
+      target:
+        area_id: office
+      data:
+        brightness_pct: 100
+        color_temp_kelvin: 4500
+
+# Event entity (button/remote): the state is the time of the last event,
+# event_type tells which press it was.
+- id: "office_button_actions"
+  alias: "Office - button actions"
+  mode: queued
+  triggers:
+    - trigger: state
+      entity_id: event.office_button
+      not_from: unavailable
+  variables:
+    press: "{{ trigger.to_state.attributes.event_type }}"
+  actions:
+    - choose:
+        - conditions: "{{ press == 'single' }}"
+          sequence:
+            - action: light.toggle
+              target:
+                area_id: office
+        - conditions: "{{ press == 'double' }}"
+          sequence:
+            - action: scene.turn_on
+              target:
+                entity_id: scene.office_focus
+        - conditions: "{{ press == 'long_press' }}"
+          sequence:
+            - action: light.turn_off
+              target:
+                floor_id: ground_floor
+
+# Custom voice sentences: [optional] words, (a|b) alternatives, {slot} wildcards.
+- id: "voice_bedtime"
+  alias: "Voice - bedtime"
+  triggers:
+    - trigger: conversation
+      command:
+        - "(good night|bedtime)"
+        - "good night, wake me [up] at {wake_time}"
+  actions:
+    - action: script.bedtime_routine
+      data:
+        wake_time: "{{ trigger.slots.wake_time | default('') }}"
+    - set_conversation_response: >-
+        Good night.{{ ' Alarm at ' ~ trigger.slots.wake_time ~ '.' if trigger.slots.wake_time is defined else '' }}

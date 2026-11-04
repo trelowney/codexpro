@@ -22,6 +22,7 @@
 #   * startup removes only the old npm/pip caches; user files and notes are never deleted or left out of backups
 #   * config.yaml leaves downloadable things out of backups
 #   * the terminal WebSocket works through the /terminal proxy
+#   * the YAML check and Home Assistant skills are in place and answer correctly
 #   * the status bar shows Codex's usage limits, config.toml carries no add-on note
 set -uo pipefail
 
@@ -191,6 +192,25 @@ check "Codex runs a command with the active setting" codex_runs 'command -v ha-a
 check "  ... and can write into /homeassistant" codex_runs 'touch /homeassistant/.cx-run-test && rm /homeassistant/.cx-run-test && echo W_OK' W_OK
 check "codex-doctor: Codex can run commands" sh -c "docker exec ${NAME} bash -lc codex-doctor | grep -q 'Codex can run commands'"
 check "codex-doctor: no failure about commands" sh -c "! docker exec ${NAME} bash -lc codex-doctor | grep -q 'cannot run any command'"
+echo "YAML check and Home Assistant skills:"
+# What the check tells Codex after apply_patch changed the file $1
+hook_post() {
+    python3 -I -c 'import json,sys;print(json.dumps({"hook_event_name":"PostToolUse","tool_name":"apply_patch","cwd":"/homeassistant","tool_input":{"command":"*** Begin Patch\n*** Update File: "+sys.argv[1]+"\n*** End Patch"}}))' "$1" \
+        | docker exec -i "${NAME}" /usr/local/bin/python3 /opt/codexpro-ha/hooks/codex_yaml_check.py
+}
+hook_says_saved()   { hook_post "$1" | grep -q 'WAS saved'; }
+hook_never_blocks() { ! hook_post "$1" | grep -q '"decision"'; }
+hook_is_silent()    { [ -z "$(hook_post "$1")" ]; }
+check "PyYAML in the image's Python"        docker exec "${NAME}" /usr/local/bin/python3 -c 'import yaml'
+check "hooks in Codex's system layer"       docker exec "${NAME}" test -s /etc/codex/hooks.json
+check "skills in Codex's system layer"      docker exec "${NAME}" test -s /etc/codex/skills/ha-check/SKILL.md
+check "AGENTS.md explains the check"        docker exec "${NAME}" grep -q 'automatic YAML check' /data/codex/AGENTS.md
+check "codex-doctor: the check works"       sh -c "docker exec ${NAME} bash -lc codex-doctor | grep -q 'YAML check and Home Assistant skills work'"
+docker exec "${NAME}" sh -c 'printf "a: 1\na: 2\n" > /homeassistant/smoke-dup.yaml; printf "a: 1\nb: !include x.yaml\n" > /homeassistant/smoke-ok.yaml'
+check "broken file: Codex is told it is saved" hook_says_saved /homeassistant/smoke-dup.yaml
+check "  ... never as a block"              hook_never_blocks /homeassistant/smoke-dup.yaml
+check "good file: nothing said"             hook_is_silent /homeassistant/smoke-ok.yaml
+docker exec "${NAME}" rm -f /homeassistant/smoke-dup.yaml /homeassistant/smoke-ok.yaml
 check "persist-install --list"           docker exec "${NAME}" bash -lc "persist-install --list"
 check "ha-reload --help"                 docker exec "${NAME}" ha-reload --help
 check "hass-mcp installed"               docker exec "${NAME}" which hass-mcp

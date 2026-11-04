@@ -114,6 +114,22 @@ else
     ok "Home Assistant MCP server is off (that is fine, file access still works)"
 fi
 
+# 6b. YAML check and Home Assistant skills. Runs the real check on a broken file.
+if [ -e /etc/codex/hooks.json ]; then
+    probe="$(mktemp -d)"
+    printf 'a: [\n' > "${probe}/probe.yaml"
+    answer="$(printf '{"hook_event_name":"PostToolUse","tool_name":"apply_patch","cwd":"%s","tool_use_id":"doctor","tool_input":{"command":"*** Begin Patch\\n*** Update File: %s/probe.yaml\\n*** End Patch"}}' "${probe}" "${probe}" \
+        | /usr/local/bin/python3 /opt/codexpro-ha/hooks/codex_yaml_check.py 2>/dev/null)"
+    rm -rf "${probe}"
+    if [[ "${answer}" == *"WAS saved"* ]] && [ -e /etc/codex/skills/ha-check/SKILL.md ]; then
+        ok "YAML check and Home Assistant skills work"
+    else
+        bad "The automatic YAML check does not work." "Codex still works without it. Restart the add-on; if this stays, turn 'home_assistant_tools' off in the add-on configuration."
+    fi
+else
+    ok "YAML check and Home Assistant skills are off (home_assistant_tools: false)"
+fi
+
 # 7. Session persistence
 if tmux has-session -t codex 2>/dev/null; then
     ok "Persistent session 'codex' is alive - closing the browser will not lose it"

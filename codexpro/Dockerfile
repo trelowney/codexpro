@@ -83,6 +83,13 @@ RUN NPM_CONFIG_CACHE=/tmp/npm-cache npm install -g "@openai/codex@>=0.166.0" \
 RUN pip3 install --no-cache-dir --break-system-packages "hass-mcp>=0.6.1" \
     && rm -f /usr/local/bin/test
 
+# The YAML check and Home Assistant skills (option home_assistant_tools; run.sh
+# puts them where Codex looks). The check needs PyYAML in the image's Python.
+COPY ha-tools/ /opt/codexpro-ha/
+RUN pip3 install --no-cache-dir --break-system-packages pyyaml \
+    && python3 -c "import yaml" \
+    && python3 -m compileall -q /opt/codexpro-ha
+
 # Home Assistant CLI
 RUN case "${BUILD_ARCH:-$(uname -m)}" in \
         amd64|x86_64)  HA_ARCH="amd64" ;; \

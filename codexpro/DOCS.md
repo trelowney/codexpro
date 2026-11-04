@@ -83,6 +83,34 @@ Both print examples with `--help`. You will not normally type them yourself —
 they exist so Codex can reach everything the API exposes when no MCP tool
 covers what you asked for.
 
+## Codex checks the YAML it writes
+
+You do not have to do anything for this. It is on by default.
+
+- **After every change to a YAML file** the add-on checks that file: syntax,
+  tabs, duplicate keys, and syntax that your Home Assistant version no longer
+  accepts. If something is wrong, Codex is told immediately and repairs it in the
+  same answer. If the repair changes what you asked for, it should say so.
+- **Codex knows current Home Assistant.** Before it writes configuration it can
+  read a guide to today's syntax, so it does not copy old examples.
+- **You can ask for a whole check.** Say it in your own words, or type the name
+  with a dollar sign:
+
+| Say | Or type | What it does |
+|---|---|---|
+| "check my configuration" | `$ha-check` | Checks everything end to end and reports. Changes nothing |
+| "do I have duplicate automations?" | `$ha-find-duplicates` | Finds duplicate and conflicting automations and scripts |
+| "modernise my configuration" | `$ha-upgrade` | Finds outdated syntax and offers to update it. Runs only when you ask |
+
+What it does not replace: a command that only finishes later, or a change made
+outside Codex, is not checked. Before relying on a change, Codex runs
+`ha core check`, or use **Check configuration** in the files sidebar. If the two
+disagree, Home Assistant is right.
+
+Nothing here touches your own files in `/data`, and the check only reads your
+configuration. To turn it all off, set `home_assistant_tools` to off on the
+Configuration tab and restart the add-on.
+
 ## Options
 
 | Option | Meaning |
@@ -92,6 +120,7 @@ covers what you asked for.
 | `approval_policy` | `on-request` (default), `on-failure`, `never`. (`untrusted` is no longer offered by Codex and works like `on-request`.) With `never`, Codex uses the Home Assistant tools without asking; otherwise it asks before each one (answer "Allow for this session" to stop the questions) |
 | `file_access` | `full` (default) = Codex can run commands and change files in everything the add-on sees - which is only the folders listed below. `workspace` = Codex's own extra sandbox; Home Assistant's add-on container does not allow it, so the add-on falls back to `full` and says so in the log |
 | `enable_ha_mcp` | Let Codex query entities and call services |
+| `home_assistant_tools` | On (default): check every YAML file Codex changes and give Codex current Home Assistant knowledge. See [the section below](#codex-checks-the-yaml-it-writes) |
 | `openai_api_key` | Only for API-key billing; leave empty for ChatGPT sign-in |
 | `auto_update_codex` | Fetch the newest Codex CLI on every start |
 | `auto_update_ha_mcp` | Fetch the newest Home Assistant connection (hass-mcp) on every start |
@@ -297,5 +326,6 @@ space, and each failed check says what to do about it.
 | Codex will not write a file, or says `bwrap: ... Permission denied` | Set `file_access: full` and restart the add-on; `codex-doctor` checks whether Codex can run commands |
 | A command disappeared after a restart | Install it with `persist-install`, or add it to `persistent_apk_packages` |
 | Terminal shows nothing | Restart the add-on; the session is recreated on the next connection |
+| Codex mentions a YAML check you do not want, or it gets in the way | Set `home_assistant_tools: false` and restart the add-on |
 | MCP errors in the log | Set `enable_ha_mcp: false` — file access keeps working |
 | Direct access on port 7680/7681 stopped working | Since 1.2.0 the ports are closed unless published; see Security above |

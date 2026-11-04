@@ -1,7 +1,7 @@
 ---
 name: "Codex Pro"
 description: "OpenAI Codex in the Home Assistant sidebar - sessions survive restarts, the CLI updates from inside the terminal, and Codex can actually edit your configuration"
-version: "1.6.3"
+version: "1.7.0"
 slug: "codexpro"
 url: "https://github.com/trelowney/codexpro"
 image: "ghcr.io/trelowney/codexpro"
@@ -86,6 +86,7 @@ options:
   approval_policy: "on-request"
   file_access: "full"
   enable_ha_mcp: true
+  home_assistant_tools: true
   openai_api_key: ""
   auto_update_codex: false
   auto_update_ha_mcp: false
@@ -102,6 +103,7 @@ schema:
   approval_policy: list(untrusted|on-failure|on-request|never)?
   file_access: list(workspace|full)?
   enable_ha_mcp: bool?
+  home_assistant_tools: bool?
   openai_api_key: password?
   auto_update_codex: bool?
   auto_update_ha_mcp: bool?

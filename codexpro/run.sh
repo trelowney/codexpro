@@ -341,6 +341,21 @@ workspace_sandbox_works() {
 # ---------------------------------------------------------------------------
 # Codex configuration (~/.codex/config.toml) - merged, never overwritten
 # ---------------------------------------------------------------------------
+# The YAML check and Home Assistant skills. /etc/codex is Codex's system layer:
+# hooks there run without asking the user to trust them first. Written at every
+# start so the option also takes effect on a container that already has them.
+setup_ha_tools() {
+    if [ "$(config_bool 'home_assistant_tools' 'true')" = "true" ]; then
+        mkdir -p /etc/codex
+        install -m 644 /opt/codexpro-ha/hooks.json /etc/codex/hooks.json
+        ln -sfn /opt/codexpro-ha/skills /etc/codex/skills
+        bashio::log.info "YAML check and Home Assistant skills: enabled"
+    else
+        rm -f /etc/codex/hooks.json /etc/codex/skills
+        bashio::log.info "YAML check and Home Assistant skills: disabled"
+    fi
+}
+
 setup_codex_config() {
     local model approval file_access enable_mcp api_key
     model="$(config_value 'model' '')"
@@ -508,6 +523,22 @@ repairs, automations that did not load, an old backup, a full disk, updates,
 unavailable entities, low batteries). When the user asks about it, run
 `ha-status`: it explains each item in words and says what to do.
 AGENTS_EOF
+
+    if [ -e /etc/codex/hooks.json ]; then
+        cat >> "${CODEX_STATE}/AGENTS.md" << 'AGENTS_EOF'
+
+## The automatic YAML check
+
+Whenever you change a YAML file, a check runs and its findings arrive right
+after the edit. A file reported as broken is saved on disk as it is: repair it.
+A shell command is only checked once it has finished, and a background job not at
+all, so run `ha core check` before you say a change is done.
+
+Skills for Home Assistant: `homeassistant-config` (current syntax, read it before
+writing configuration), `ha-check` (check a whole configuration),
+`ha-find-duplicates`, `ha-upgrade` (modernise old syntax, only when asked).
+AGENTS_EOF
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -774,6 +805,7 @@ main() {
     setup_ha_access
     setup_codex_cli
     setup_ha_mcp_server
+    setup_ha_tools
     setup_codex_config
     warm_up_ha_mcp
     setup_home_status

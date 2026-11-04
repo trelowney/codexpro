@@ -93,6 +93,7 @@ Every option is explained in the add-on's Configuration tab. The short version:
 - `approval_policy` — how often Codex asks before acting (`on-request` default)
 - `file_access` — `full` (default; everything the add-on sees) or `workspace` (Codex's own sandbox, which Home Assistant's add-on container does not allow - the add-on then falls back to `full`)
 - `enable_ha_mcp` — let Codex query entities and call services, not just files
+- `home_assistant_tools` — check every YAML file Codex changes and teach it current Home Assistant syntax (default on)
 - `openai_api_key` — optional, only for API-key billing
 - `auto_update_codex` — update the CLI on every start
 - `auto_update_ha_mcp` — update the Home Assistant connection on every start
