@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.1] - 2026-11-04
+
+Dashboard findings say where they are.
+
+### Changed
+
+- **Dashboard findings name what you see in the editor.** Dashboards built in the
+  UI have no line numbers, so a finding only gave a path like
+  `views[1].sections[1].cards[0]`. It now also gives the view title and tab, the
+  section heading, and the card number and type, for example
+  `view "Living Room" (tab 2) > section "Lights" > card 2 (tile)`
+
+### Fixed
+
+- **A new empty sections view gets no warning**: the UI editor writes `cards: []`
+  on every new one
+
+The skills and the checks are now at
+[ESJavadex/claude-homeassistant-plugins](https://github.com/ESJavadex/claude-homeassistant-plugins) v2.1.4.
+
 ## [1.7.0] - 2026-11-04
 
 Codex checks the YAML it writes, and knows current Home Assistant.

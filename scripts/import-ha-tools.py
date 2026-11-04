@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh codexpro/ha-tools from ESJavadex/claude-homeassistant-plugins (MIT).
 
-    python3 scripts/import-ha-tools.py v2.1.3
+    python3 scripts/import-ha-tools.py v2.1.4
 
 Copies the skills and the YAML validator, and rewrites what only makes sense in
 Claude Code. The checker itself stays as upstream wrote it. Nothing here touches
