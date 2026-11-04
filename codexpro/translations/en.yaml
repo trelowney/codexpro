@@ -94,11 +94,12 @@ configuration:
       limits is left and when each resets (⏱ 5h 62% left ↻14:30 · 7d 80% left),
       then 🏠 ✓ when all is well at home, otherwise what needs a look: safety
       alarms, repairs, automations that did not load, an old backup, a full
-      disk, a new Home Assistant version, updates, unavailable entities, low
-      batteries. Leave empty for all of that. Write off to hide it. Or list
-      only what you want, in order (limits, alerts, repairs, automations,
-      backup, disk, core, updates, unavailable, battery) and add any entity,
-      for example CO2=sensor.living_room_co2. Type ha-status in the terminal
+      disk, a new Home Assistant version, updates, low batteries. Leave empty
+      for all of that. Write off to hide it. Or list only what you want, in
+      order (limits, alerts, repairs, automations, backup, disk, core, updates,
+      unavailable, battery) and add any entity, for example
+      CO2=sensor.living_room_co2. A minus leaves entities out, for example
+      -switch.coffee_machine or -sensor.car_*. Type ha-status in the terminal
       for the explanation.
 network:
   7680/tcp: >-

@@ -189,6 +189,46 @@ setup_config_alias() {
 # ---------------------------------------------------------------------------
 # Codex CLI: persistent, updatable install in /data/npm
 # ---------------------------------------------------------------------------
+# The version a Codex program reports ("codex-cli 0.166.0" -> 0.166.0), empty
+# if it does not run
+codex_version_of() {
+    timeout 20 "$1" --version 2>/dev/null | awk 'NR==1 {print $NF}' || true
+}
+
+# A copy from codex-update or auto_update_codex comes first in PATH, and updating
+# the add-on does not touch it. So once the image moves past it, an old copy
+# would stay in use for good. It is removed when it is older than the image's or
+# does not run; one that is the same or newer stays. Only the Codex packages go:
+# other npm tools in /data/npm are the user's.
+drop_outdated_codex_copy() {
+    local copy="${NPM_ROOT}/bin/codex" built_in="" built_in_version="" copy_version=""
+    local system_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+    # Set aside by 1.6.2 or older when it did not run
+    rm -f "${copy}.broken" 2>/dev/null || true
+    if [ ! -e "${copy}" ] && [ ! -L "${copy}" ]; then
+        rm -rf "${NPM_ROOT}/lib/node_modules/@openai"/codex* 2>/dev/null || true
+        return 0
+    fi
+
+    built_in="$(PATH="${system_path}" command -v codex || true)"
+    [ -n "${built_in}" ] && built_in_version="$(codex_version_of "${built_in}")"
+    copy_version="$(codex_version_of "${copy}")"
+
+    if [ -z "${copy_version}" ]; then
+        bashio::log.info "The Codex copy in ${NPM_ROOT} does not run: removed it, using the add-on's ${built_in_version:-built-in one}."
+    else
+        # A version that cannot be compared (a pre-release) is left alone
+        [[ "${copy_version}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || return 0
+        [[ "${built_in_version}" =~ ^[0-9]+(\.[0-9]+)+$ ]] || return 0
+        [ "${copy_version}" != "${built_in_version}" ] || return 0
+        [ "$(printf '%s\n%s\n' "${copy_version}" "${built_in_version}" | sort -V | tail -n 1)" = "${built_in_version}" ] || return 0
+        bashio::log.info "Codex ${copy_version} from an earlier update is older than the add-on's ${built_in_version}: removed it, using the add-on's."
+    fi
+    rm -rf "${copy}" "${NPM_ROOT}/lib/node_modules/@openai"/codex* 2>/dev/null || true
+    hash -r 2>/dev/null || true
+}
+
 setup_codex_cli() {
     local auto_update
     auto_update="$(config_bool 'auto_update_codex' 'false')"
@@ -207,13 +247,7 @@ setup_codex_cli() {
         fi
     fi
 
-    # A persistent install always wins over the image one, but only if it
-    # actually runs (a stale or wrong-arch copy in /data must not brick the add-on).
-    if [ -x "${NPM_ROOT}/bin/codex" ] && ! timeout 20 "${NPM_ROOT}/bin/codex" --version >/dev/null 2>&1; then
-        bashio::log.warning "The Codex copy in ${NPM_ROOT} does not run - ignoring it and using the built-in one."
-        bashio::log.warning "To repair it, run in the terminal:  codex-update --reset"
-        mv "${NPM_ROOT}/bin/codex" "${NPM_ROOT}/bin/codex.broken" 2>/dev/null || true
-    fi
+    drop_outdated_codex_copy
 
     bashio::log.info "Codex CLI in use: $(command -v codex) ($(codex --version 2>/dev/null || echo 'version unknown'))"
 }
@@ -482,7 +516,8 @@ AGENTS_EOF
 # Codex's usage limits and the home on the status bar (ha-status). The
 # status_line option is a list:
 # empty for the default pieces, "off" to hide it, or pieces and entities in
-# the order to show them. Home Assistant is read by one background refresh;
+# the order to show them. An entry like -sensor.car_* leaves entities out of the
+# home pieces; alone, it keeps the default pieces. Home Assistant is read by one background refresh;
 # drawing the bar only reads its summary.
 setup_home_status() {
     local entries entry pieces unknown=""
@@ -493,12 +528,21 @@ setup_home_status() {
     HOME_STATUS="on"
     mkdir -p /tmp/ha-status
     : > /tmp/ha-status/layout
+    : > /tmp/ha-status/exclude
     rm -f /tmp/ha-status/off
     while IFS= read -r entry; do
         entry="$(printf '%s' "${entry}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         [ -z "${entry}" ] && continue
         case "${entry}" in
             off|OFF|Off|false|none) HOME_STATUS="off" ;;
+            -*)
+                # Left out of the home pieces: -switch.coffee or -sensor.car_*
+                if [[ "${entry}" =~ ^-[A-Za-z0-9_*]+\.[A-Za-z0-9_*]+$ ]]; then
+                    printf '%s\n' "${entry#-}" >> /tmp/ha-status/exclude
+                else
+                    unknown="${unknown} ${entry}"
+                fi
+                ;;
             *=*.*|*.*) printf '%s\n' "${entry}" >> /tmp/ha-status/layout ;;
             *)
                 if [[ "${pieces}" == *" ${entry} "* ]]; then
@@ -510,7 +554,7 @@ setup_home_status() {
         esac
     done <<< "${entries}"
     if [ -n "${unknown}" ]; then
-        bashio::log.warning "status_line: left out unknown piece(s):${unknown}. Known pieces:${pieces}and entities such as sensor.x or CO2=sensor.x"
+        bashio::log.warning "status_line: left out unknown piece(s):${unknown}. Known pieces:${pieces}entities such as sensor.x or CO2=sensor.x, and -sensor.x to leave one out"
     fi
     if [ "${HOME_STATUS}" = "off" ]; then
         touch /tmp/ha-status/off

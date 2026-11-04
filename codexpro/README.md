@@ -10,6 +10,11 @@ your configuration.
 Felix and [esjavadex/claude-code-ha](https://github.com/esjavadex/claude-code-ha)
 by Javier Santos, both MIT licensed.
 
+**Full guide:** the **Documentation** tab of this add-on, also
+[on GitHub](https://github.com/trelowney/codexpro/blob/main/codexpro/DOCS.md).
+
+![The Codex Pro panel: the menu, the files sidebar and the status bar](https://raw.githubusercontent.com/trelowney/codexpro/main/assets/screenshot.png)
+
 ## What is different here
 
 Three things about the existing Codex add-on made it painful. All three are fixed:
@@ -49,10 +54,15 @@ Three things about the existing Codex add-on made it painful. All three are fixe
   about it, even while the cursor is in the terminal.
 - **Dictation** — 🎤 speak instead of typing, through your Home Assistant
   speech-to-text engine (any browser, the HA app too) or the browser's own.
+- **Keys for a phone** — a key bar with Esc, Tab, arrows and Ctrl on touch
+  screens, and Shift+Enter for a new line.
 - **Copy that works** — mouse selection, a 📋 button for phones and tablets,
   and one-tap copying of the link on screen.
+- **Status bar** — how much of Codex's 5-hour and weekly limits is left, then 🏠 ✓
+  or what needs a look at home. The `status_line` option sets what it shows.
 - **Files sidebar** — browse and preview the configuration, see what changed
-  recently, and run Home Assistant's configuration check.
+  recently, and run Home Assistant's configuration check. **± Changes** shows
+  what Codex changed.
 - **`codex-doctor`** — one command that checks sign-in, file access, the API, the
   configuration file, the session and free disk space.
 

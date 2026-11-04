@@ -23,7 +23,19 @@ STATES_EVERY="${HA_STATUS_STATES_EVERY:-60}"     # seconds
 SYSTEM_EVERY="${HA_STATUS_SYSTEM_EVERY:-300}"    # seconds
 LIMITS_EVERY="${HA_STATUS_LIMITS_EVERY:-15}"     # seconds (just reads local files)
 SESSIONS="${CODEX_HOME:-/data/codex}/sessions"
-PIECES="limits alerts repairs automations backup disk core updates unavailable battery"
+BATTERY_STALE="${HA_STATUS_BATTERY_STALE:-86400}" # seconds: older battery readings are not "low"
+EXCLUDE_FILE="${CACHE}/exclude"
+# The default line leaves out "unavailable": devices that turn off on their own
+# (a coffee machine, a TV) would keep it counting all the time
+DEFAULT_PIECES="limits alerts repairs automations backup disk core updates battery"
+PIECES="${DEFAULT_PIECES} unavailable"
+# jq: an ISO date with any time zone to seconds, null if it is not one
+JQ_EPOCH='def epoch: [ try (sub("\\.[0-9]+"; "")
+    | capture("^(?<d>.{19})(?<z>Z|[+-][0-9][0-9]:[0-9][0-9])?$")
+    | (.d + "Z" | fromdateiso8601)
+      - (if (.z // "Z") == "Z" then 0
+         else ((.z[1:3] | tonumber) * 3600 + (.z[4:6] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end))
+    catch null ] | .[0];'
 
 usage() {
     cat <<EOF
@@ -36,11 +48,14 @@ terminal's status bar
   ha-status --pieces   the pieces you can put in the 'status_line' option
 
 The line is set with the add-on option 'status_line' (Configuration tab):
-  empty                the default: ${PIECES}
+  empty                the default: ${DEFAULT_PIECES}
   off                  nothing on the status bar (no limits, no home)
   limits               Codex's 5-hour and weekly usage, and when each resets
   a list of pieces     only those, in that order, for example: backup, disk
   an entity            sensor.living_room_co2, or with a label CO2=sensor.living_room_co2
+  -an entity           left out of the home pieces, * matches anything:
+                       -switch.coffee_machine or -sensor.car_* (keeps the default line)
+All pieces: ${PIECES}
 Your own tmux settings in /data/home/.tmux.local.conf always win.
 EOF
 }
@@ -69,11 +84,21 @@ layout() {
     local raw=""
     [ -r "${LAYOUT_FILE}" ] && raw="$(cat "${LAYOUT_FILE}")"
     # One entry per line (a label may contain spaces); empty = the default pieces
-    { if [ -n "${raw//[[:space:]]/}" ]; then printf '%s\n' "${raw}"; else printf '%s\n' ${PIECES}; fi; } | jq -R -s -c '
+    { if [ -n "${raw//[[:space:]]/}" ]; then printf '%s\n' "${raw}"; else printf '%s\n' ${DEFAULT_PIECES}; fi; } | jq -R -s -c '
         split("\n") | map(select(length > 0)) | map(
             if test("^[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then {s: "entity", id: ., label: ""}
             elif test("^[^=]+=[A-Za-z0-9_]+\\.[A-Za-z0-9_]+$") then (split("=") | {s: "entity", id: .[1], label: .[0]})
             else {s: .} end)'
+}
+
+# The entities left out (status_line: -sensor.car_*) as anchored regexes
+excludes() {
+    if [ -s "${EXCLUDE_FILE}" ]; then
+        jq -R -s -c 'split("\n") | map(select(length > 0)
+            | "^" + (gsub("[.]"; "[.]") | gsub("[*]"; ".*")) + "$")' "${EXCLUDE_FILE}"
+    else
+        echo '[]'
+    fi
 }
 
 # The newest usage snapshot Codex wrote, as
@@ -118,12 +143,16 @@ refresh_states() {
         rm -f "${raw}"
         return 1
     fi
-    jq -c --argjson want "$(layout | jq -c '[.[] | select(.s == "entity")]')" '
+    jq -c --argjson want "$(layout | jq -c '[.[] | select(.s == "entity")]')" \
+        --argjson ex "$(excludes)" --argjson stale "${BATTERY_STALE}" "${JQ_EPOCH}"'
         def clean: tostring | gsub("[\u0000-\u001f\u007f-\u009f#]"; "") | .[0:32];
         def name: (.attributes.friendly_name // .entity_id) | clean;
         def domain: .entity_id | split(".")[0];
-        . as $all
-        | (map({key: .entity_id, value: .}) | from_entries) as $by_id
+        # A battery nothing has heard from for a while (a parked car) is not "low"
+        def fresh: ((.last_reported // .last_updated // "") | epoch) as $t
+            | $t == null or (now - $t) < $stale;
+        (map({key: .entity_id, value: .}) | from_entries) as $by_id
+        | [ .[] | .entity_id as $id | select(all($ex[]; . as $re | $id | test($re) | not)) ] as $all
         | {
             ts: (now | floor),
             alerts: [ $all[] | select(domain == "binary_sensor" and .state == "on")
@@ -133,7 +162,7 @@ refresh_states() {
             unavailable: [ $all[] | select(.state == "unavailable") ] | length,
             broken_automations: [ $all[] | select(domain == "automation" and .state == "unavailable") | name ],
             low_battery: [ $all[] | select(domain == "sensor" and .attributes.device_class == "battery")
-                | select((.state | tonumber? // 101) < 20) | {name: name, level: (.state | tonumber | floor)} ],
+                | select((.state | tonumber? // 101) < 20) | select(fresh) | {name: name, level: (.state | tonumber | floor)} ],
             updates: [ $all[] | select(domain == "update" and .state == "on") | name ],
             entities: [ $want[] | . as $w | $by_id[$w.id] as $s
                 | { id: $w.id,
@@ -156,13 +185,7 @@ refresh_system() {
     [ "${ok}" = 1 ] || return 1
     jq -n -c \
         --slurpfile core "${CACHE}/core_info.raw" --slurpfile host "${CACHE}/host_info.raw" \
-        --slurpfile backups "${CACHE}/backups.raw" --slurpfile res "${CACHE}/resolution_info.raw" '
-        def epoch: try (sub("\\.[0-9]+"; "")
-            | capture("^(?<d>.{19})(?<z>Z|[+-][0-9][0-9]:[0-9][0-9])?$")
-            | (.d + "Z" | fromdateiso8601)
-              - (if (.z // "Z") == "Z" then 0
-                 else ((.z[1:3] | tonumber) * 3600 + (.z[4:6] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end))
-            catch null;
+        --slurpfile backups "${CACHE}/backups.raw" --slurpfile res "${CACHE}/resolution_info.raw" "${JQ_EPOCH}"'
         ($core[0].data // null) as $c | ($host[0].data // null) as $h
         | ($backups[0].data // null) as $b | ($res[0].data // null) as $r
         | {
@@ -170,7 +193,11 @@ refresh_system() {
             core: (if $c then {update: ($c.update_available // false), latest: (($c.version_latest // "") | tostring)} else null end),
             disk_pct: (if $h and ($h.disk_total // 0) > 0 then ($h.disk_used / $h.disk_total * 100 | floor) else null end),
             last_backup: (if $b then ([$b.backups[]?.date | epoch] | map(select(. != null)) | max // 0) else null end),
-            repairs: (if $r then ($r.issues // [] | length) else null end),
+            # no_current_backup comes when backups skip a folder; nothing to
+            # fix in the UI, and the backup piece already shows the age
+            repairs: (if $r then [ $r.issues[]?.type | tostring
+                | select(. != "no_current_backup")
+                | gsub("[\u0000-\u001f\u007f-\u009f#]"; "") | gsub("_"; " ") | .[0:40] ] else null end),
             unhealthy: (if $r then ($r.unhealthy // [] | length) else null end)
           }' > "${CACHE}/system.tmp" 2>>"${CACHE}/err" && mv -f "${CACHE}/system.tmp" "${CACHE}/system.json"
     rm -f "${CACHE}"/*.raw
@@ -243,8 +270,10 @@ summary() {
           elif .s == "repairs" then
             if $sys == null then empty
             elif ($sys.unhealthy // 0) > 0 then item("bad"; "🩺 unhealthy"; "The Supervisor marks the system unhealthy. See Settings > System > Repairs.")
-            elif ($sys.repairs // 0) > 0 then item("warn"; "🩺 \($sys.repairs) repair" + (if $sys.repairs > 1 then "s" else "" end);
-                "\($sys.repairs) repair(s) waiting. See Settings > System > Repairs.")
+            elif ($sys.repairs // [] | length) == 1 then item("warn"; "🩺 " + $sys.repairs[0];
+                "Repair waiting: " + $sys.repairs[0] + ". See Settings > System > Repairs.")
+            elif ($sys.repairs // [] | length) > 1 then item("warn"; "🩺 \($sys.repairs | length) repairs";
+                "Repairs waiting: " + ($sys.repairs | join(", ")) + ". See Settings > System > Repairs.")
             else empty end
           elif .s == "automations" then
             if $st == null or $st.error then empty

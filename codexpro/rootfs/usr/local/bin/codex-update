@@ -38,7 +38,8 @@ codex-update - install the newest Codex CLI
                          version that ships with the add-on
   codex-update --check   only show which version is installed
 
-The update is stored in /data, so it survives restarts of the add-on.
+The update is stored in /data, so it survives restarts of the add-on. Once the
+add-on brings a newer Codex than this copy, the add-on removes the copy at start.
 Updating the add-on itself is a separate thing (Settings > Add-ons).
 EOF
         exit 0

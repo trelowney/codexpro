@@ -58,6 +58,11 @@ until the next `codex-update` or automatic update. If an update ever installs
 something broken, both commands detect it, roll back to the version built into
 the add-on, and tell you — the add-on does not end up unusable.
 
+An updated Codex comes first, also after you update the add-on. So that it does
+not stay in use for good once the add-on brings something newer, the add-on
+checks at every start: a copy that is older than the one built in, or that does
+not run, is removed and the built-in one is used. A copy that is newer is kept.
+
 ## Talking to Home Assistant, not just to its files
 
 Codex has three ways in, and it picks whichever fits:
@@ -196,14 +201,14 @@ Otherwise it lists what does, most urgent first:
 |---|---|---|
 | `limits` | ⏱ 5h 62% left ↻14:30 · 7d 80% left ↻Fri 09:00 | Codex's usage limits (see above) |
 | `alerts` | 🚨 name | a smoke, gas, carbon monoxide, water or safety sensor is on (red) |
-| `repairs` | 🩺 2 repairs | Home Assistant has repairs waiting, or the system is unhealthy |
+| `repairs` | 🩺 multiple data disks | Home Assistant's Supervisor reports a problem to repair, or the system is unhealthy. With more than one: 🩺 2 repairs |
 | `automations` | 🤖 1 not loaded | an automation did not load (usually a YAML mistake) |
 | `backup` | 💾 9 days | the last backup is over 2 days old (red over 7 days, or none at all) |
 | `disk` | 💽 85% | the disk is 80 % full or more (red from 90 %) |
 | `core` | ⬆ HA 2026.11.1 | a new Home Assistant version is out |
 | `updates` | 📦 3 | updates are waiting (add-ons, integrations, devices) |
-| `unavailable` | ⚠ 4 unavailable | entities are unavailable (a device is off or out of range) |
-| `battery` | 🔋 Door lock 12% | a battery sensor is below 20 % |
+| `battery` | 🔋 Door lock 12% | a battery sensor is below 20 % and reported in the last day (a parked car keeps its last level for days) |
+| `unavailable` | ⚠ 4 unavailable | entities are unavailable. Not on the bar by default, since devices that turn off on their own would keep it counting: add it by name |
 
 **Type `ha-status` in the terminal** to see each item spelled out with what to
 do about it, including the usage limits. `ha-status --refresh` asks Home Assistant right now and says what
@@ -214,14 +219,17 @@ start).
 To change the line, set the `status_line` option on the Configuration tab
 and restart the add-on:
 
-- leave it empty for all the pieces above;
+- leave it empty for all the pieces above except `unavailable`;
 - `off` to show nothing (no limits, no home);
 - a list of pieces, in the order you want them, for example `alerts`,
   `backup`. Only `limits` shows just the usage; leave `limits` out of the list
   to hide the usage;
 - any entity, alone (`sensor.living_room_co2` shows its name and value) or
   with a short label (`CO2=sensor.living_room_co2`). A misspelt entity shows
-  *not found*; an unknown piece is named in the add-on log.
+  *not found*; an unknown piece is named in the add-on log;
+- a minus leaves entities out of the home pieces, and `*` matches anything:
+  `-switch.coffee_machine`, `-sensor.car_*`. On their own they keep the default
+  line. An entity you name yourself is still shown.
 
 The line is read in the background once a minute (backups, disk and repairs
 every five minutes), so it does not slow anything down. Your own tmux settings

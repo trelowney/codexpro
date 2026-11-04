@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.6.3] - 2026-11-04
+
+An old update no longer pins Codex, and a quieter status bar.
+
+### Fixed
+
+- **An old `codex-update` no longer keeps an old Codex in use for good.** A copy
+  in `/data` comes first, and updating the add-on did not touch it. At every
+  start, a copy older than the add-on's, or one that does not run, is now
+  removed and the add-on's Codex is used. A copy that is newer is kept. Only
+  that copy is removed: your files and notes in `/data`, and other npm tools,
+  stay as they are
+- **A battery that has not reported for a day is not shown as low**: a parked
+  car keeps its last level for days
+- **"No current backup" no longer counts as a repair**: the Supervisor raises it
+  when backups skip a folder, with nothing to fix in the UI, and the 💾 piece
+  already shows the backup's age
+
+### Changed
+
+- **`unavailable` is no longer on the bar by default.** Devices that turn off on
+  their own (a coffee machine, a TV) kept it counting. Add `unavailable` to the
+  `status_line` option to get it back
+- **A single repair says what it is**: 🩺 multiple data disks instead of 🩺 1 repair
+
+### Added
+
+- **Leave entities out of the bar** with a minus in the `status_line` option:
+  `-switch.coffee_machine` or `-sensor.car_*`. On their own they keep the default
+  line
+- **The Info page** has a screenshot, a link to the full guide, and lists the
+  status bar and the phone keys
+
 ## [1.6.2] - 2026-11-03
 
 A clean add-on log.
