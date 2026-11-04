@@ -201,6 +201,7 @@ hook_post() {
 hook_says_saved()   { hook_post "$1" | grep -q 'WAS saved'; }
 hook_never_blocks() { ! hook_post "$1" | grep -q '"decision"'; }
 hook_is_silent()    { [ -z "$(hook_post "$1")" ]; }
+check "start check line in the log"         sh -c "docker logs ${NAME} 2>&1 | grep -q 'Start check: [0-9]* MB free in /data, [0-9]* MB memory available, OpenAI '"
 check "PyYAML in the image's Python"        docker exec "${NAME}" /usr/local/bin/python3 -c 'import yaml'
 check "hooks in Codex's system layer"       docker exec "${NAME}" test -s /etc/codex/hooks.json
 check "skills in Codex's system layer"      docker exec "${NAME}" test -s /etc/codex/skills/ha-check/SKILL.md

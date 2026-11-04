@@ -61,6 +61,60 @@ WEB_PORT=7680
 TMUX_SESSION="codex"
 
 # ---------------------------------------------------------------------------
+# Start check: one line when all is well, a warning that says what to do when
+# not. Warns only, Codex still starts. Runs first, so its message is in the log
+# even if a full or read-only /data stops the start right after it.
+# ---------------------------------------------------------------------------
+START_CHECK_MIN_DISK_MB=200
+START_CHECK_MIN_MEMORY_MB=300
+
+url_answers() {
+    # Any HTTP answer counts: without a login these hosts reply 401 or 403.
+    curl -s -o /dev/null --connect-timeout 3 --max-time 5 "$1"
+}
+
+openai_answers() {
+    local api_pid chatgpt_pid result=0
+    url_answers https://api.openai.com/ & api_pid=$!
+    url_answers https://chatgpt.com/ & chatgpt_pid=$!
+    wait "${api_pid}" || result=1
+    wait "${chatgpt_pid}" || result=1
+    return "${result}"
+}
+
+start_check() {
+    local disk_mb memory_mb probe="${DATA_ROOT}/.start-check.$$" network="reachable"
+
+    if ( : > "${probe}" ) 2>/dev/null; then
+        rm -f "${probe}"
+    else
+        bashio::log.warning "${DATA_ROOT} cannot be written to, so Codex cannot keep its login or sessions."
+        bashio::log.warning "What to do: restart the add-on; if this message stays, check the disk of the Home Assistant host."
+    fi
+
+    disk_mb="$(df -Pm "${DATA_ROOT}" 2>/dev/null | awk 'NR==2 {print $4}')" || disk_mb=""
+    if [ -n "${disk_mb}" ] && [ "${disk_mb}" -lt "${START_CHECK_MIN_DISK_MB}" ]; then
+        bashio::log.warning "Only ${disk_mb} MB free in ${DATA_ROOT}. Updates and sessions may fail."
+        bashio::log.warning "What to do: free space on the Home Assistant host, for example by deleting old backups."
+    fi
+
+    memory_mb="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)" || memory_mb=""
+    if [ -n "${memory_mb}" ] && [ "${memory_mb}" -lt "${START_CHECK_MIN_MEMORY_MB}" ]; then
+        bashio::log.warning "Only ${memory_mb} MB of memory is available. Codex may be slow or get stopped."
+        bashio::log.warning "What to do: stop add-ons you do not need, then restart this one."
+    fi
+
+    # A second try: one failed lookup at start is no reason to worry anyone.
+    openai_answers || { sleep 2; openai_answers; } || network="not reachable"
+    if [ "${network}" != "reachable" ]; then
+        bashio::log.warning "OpenAI cannot be reached from this add-on, so Codex cannot sign in or answer."
+        bashio::log.warning "What to do: check the internet and DNS of the Home Assistant host, then try again."
+    fi
+
+    bashio::log.info "Start check: ${disk_mb:-unknown} MB free in ${DATA_ROOT}, ${memory_mb:-unknown} MB memory available, OpenAI ${network}"
+}
+
+# ---------------------------------------------------------------------------
 # Environment: everything that must survive a restart lives in /data
 # ---------------------------------------------------------------------------
 init_environment() {
@@ -799,6 +853,7 @@ start_terminal() {
 
 main() {
     bashio::log.info "Codex Pro starting..."
+    start_check
     init_environment
     tidy_data
     setup_config_alias

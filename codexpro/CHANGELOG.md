@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **A short check at every start.** One line in the log gives free space, free
+  memory and whether OpenAI can be reached. If `/data` cannot be written to, or
+  space, memory or the connection is a problem, a warning says what to do
+
 ## [1.7.1] - 2026-11-04
 
 Dashboard findings say where they are.
