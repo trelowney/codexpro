@@ -45,6 +45,8 @@ Taken from it:
   (`voice-api.mjs`, `voice-input.mjs`, `voice-audio.mjs`,
   `voice-recorder-worklet.js`, 2.4.0, with rewritten messages) and the
   Alpine 3.24 base with `apk upgrade` at build time (2.3.8)
+- later fix adopted in 1.7.2: the terminal reconnect
+  (`terminal-reconnect.js`, 2.5.3)
 
 ## ESJavadex/claude-homeassistant-plugins
 

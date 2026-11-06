@@ -357,6 +357,9 @@ check "page is served no-cache"             sh -c "docker exec ${NAME} curl -sI 
 check "  ... scripts too"                   sh -c "docker exec ${NAME} curl -sI http://127.0.0.1:7680/terminal-clipboard.js | grep -qi '^cache-control: no-cache'"
 check "  ... and unchanged files answer 304" sh -c "etag=\$(docker exec ${NAME} curl -sI http://127.0.0.1:7680/key-bar.js | sed -n 's/^[Ee][Tt][Aa][Gg]: //p' | tr -d '\r'); test -n \"\$etag\" && test \"\$(docker exec ${NAME} curl -s -o /dev/null -w '%{http_code}' -H \"If-None-Match: \$etag\" http://127.0.0.1:7680/key-bar.js)\" = 304"
 check "API answers are not touched"         sh -c "! docker exec ${NAME} curl -sI http://127.0.0.1:7680/health | grep -qi '^cache-control: no-cache'"
+check "terminal reconnect is in the page"   sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/ | grep -q 'terminal-reconnect.js' && docker exec ${NAME} curl -sf http://127.0.0.1:7680/terminal-reconnect.js | grep -q CodexTerminalReconnect"
+check "  ... its text is what ttyd really shows" sh -c "docker exec ${NAME} curl -s --compressed http://127.0.0.1:7681/ | grep -q 'Press ⏎ to Reconnect'"
+check "  ... and its unit tests pass"       docker run --rm --network none -v "${REPO_ROOT}:/r:ro" --entrypoint node "${IMAGE}" /r/tests/test-terminal-reconnect.js
 check "phone key bar in the page"           sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/ | grep -q 'id=\"key-bar\"' && docker exec ${NAME} curl -sf http://127.0.0.1:7680/key-bar.js | grep -q CodexKeyBar"
 check "Shift+Enter sends Ctrl+J"            sh -c "docker exec ${NAME} curl -sf http://127.0.0.1:7680/terminal-clipboard.js | grep -q \"SHIFT_ENTER_INPUT = '.n';\""
 check "ingress_stream is on"                python3 -c "import yaml,sys; c=yaml.safe_load(open('${REPO_ROOT}/codexpro/config.yaml')); sys.exit(0 if c.get('ingress_stream') is True else 1)"

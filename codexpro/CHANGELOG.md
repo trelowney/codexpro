@@ -1,6 +1,21 @@
 # Changelog
 
-## [Unreleased]
+## [1.7.2] - 2026-11-06
+
+The terminal reconnects by itself, and every start checks space, memory and the connection.
+
+### Fixed
+
+- **The terminal comes back by itself after sleep, a network drop or a Home
+  Assistant restart.** ttyd tries once, straight away, and then stops at "Press ⏎
+  to Reconnect". That try often came too early and Enter failed the same way, so
+  only leaving the page and coming back helped. While that message shows, the panel
+  now asks the add-on if it is reachable after 1, 2 and 5 s, then every 10 s, and at
+  once when the browser is back online or the tab is shown again. When the add-on
+  answers, the terminal reloads into the same session
+- **The panel says what is going on** next to the title while it reconnects
+- Each try is logged in the browser console as `[terminal-reconnect]`
+- Removed ttyd's `--client-option reconnect=5`: ttyd 1.7.7 has no such option
 
 ### Added
 

@@ -845,7 +845,6 @@ start_terminal() {
         --interface "${interface}" \
         --writable \
         --ping-interval 30 \
-        --client-option reconnect=5 \
         --client-option 'fontSize=14' \
         --client-option 'fontFamily=Menlo,Consolas,monospace' \
         /usr/local/bin/codex-attach
