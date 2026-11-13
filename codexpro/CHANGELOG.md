@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.7.3] - 2026-11-13
+
+A safer clipboard and start-up, and a menu that fits a phone.
+
+### Security
+
+- **Copied text has its control characters removed.** A program can set the
+  clipboard through OSC 52, and a file in `/config` can have control characters
+  in its name (Copy path). Pasted back into the terminal, an escape and a carriage
+  return could end the paste early and run a command. Tabs and line breaks are kept
+- **Programs can no longer read the clipboard through tmux.** tmux answered such a
+  request with whatever was last copied in tmux. Programs can still set it
+- **Start-up runs from `/` instead of `/homeassistant`.** Python looks in the
+  current folder first, so a `venv.py` placed in `/config` by another add-on or a
+  Samba user would have run as root when the add-on built the Home Assistant MCP
+  update. `mcp-update`, `persist-install` and the self-check now run Python
+  isolated (`python3 -I`) too, since the terminal opens in `/homeassistant`
+
+### Fixed
+
+- **The menu fits a phone screen.** Below 72 columns the menu, the welcome screen
+  and "What can I do here?" show a short form instead of wrapping into a mess.
+  Wider terminals look exactly as before, and the option numbers are unchanged
+- The menu redraws when the terminal switches between the two forms: at start-up
+  it is drawn at 80 columns before any browser is attached, so opening the panel
+  on a phone or turning the phone now gives the right one
+
 ## [1.7.2] - 2026-11-06
 
 The terminal reconnects by itself, and every start checks space, memory and the connection.

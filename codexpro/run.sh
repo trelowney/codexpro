@@ -682,6 +682,9 @@ set -g allow-passthrough on
 # it on to the terminal page. tmux only does that when the outer terminal
 # declares clipboard support, which ttyd's page always has.
 set -g set-clipboard on
+# ...but never let them read it: with get-clipboard at its default, 'buffer',
+# tmux answers an OSC 52 read with whatever was last copied in tmux.
+set -g get-clipboard off
 set -as terminal-features ',*:clipboard'
 set -g status-bg colour235
 set -g status-fg colour136
@@ -851,6 +854,11 @@ start_terminal() {
 }
 
 main() {
+    # The image's WORKDIR is /homeassistant (= /config), which other add-ons
+    # and Samba users can write to. Python puts the current directory first on
+    # its import path, so a planted venv.py there would run as root during
+    # start-up. Steps that want /homeassistant name it.
+    cd /
     bashio::log.info "Codex Pro starting..."
     start_check
     init_environment

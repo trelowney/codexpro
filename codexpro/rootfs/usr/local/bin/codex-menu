@@ -12,14 +12,77 @@ set -u
 # left at an empty line. Programs started from the menu get Ctrl+C as usual
 # (bash resets the trap for them).
 ASKING=""
-trap 'printf "\n%s" "${ASKING}"' INT
+INTERRUPTED=0
+trap 'INTERRUPTED=1; printf "\n%s" "${ASKING}"' INT
 
-# ask "<prompt>": print it and read one line into $REPLY
+# The full screens need 72 columns. A phone in portrait shows about 45, where
+# the lines wrap into a mess, so narrower terminals get a short form.
+WIDE_COLS=72
+
+# Width of the terminal on stdin. stty, not tput: the image has no ncurses
+# tools. Not a terminal (or no answer): assume 80.
+term_cols() {
+    local size cols
+    size=$(stty size 2>/dev/null) || size=''
+    cols=${size#* }
+    case "${cols}" in
+        ''|*[!0-9]*|0) cols=80 ;;
+    esac
+    echo "${cols}"
+}
+
+is_narrow() {
+    [ "$(term_cols)" -lt "${WIDE_COLS}" ]
+}
+
+# Choose the layout once per screen and remember it: drawing takes a moment
+# (codex --version), and a phone turned meanwhile must not leave half a screen
+# in one form and half in the other, or make ask() think the screen already
+# fits.
+NARROW_LAYOUT=""
+pick_layout() {
+    if is_narrow; then NARROW_LAYOUT=1; else NARROW_LAYOUT=0; fi
+}
+
+# ask "<prompt>" [redraw]: print the prompt and read one line into $REPLY.
+# With a redraw function, the screen is drawn again when the terminal switches
+# between the phone and the full layout: the menu is often drawn before anyone
+# looks (at start-up tmux is 80 columns until a browser attaches), and a phone
+# can be turned. Typed text waits in the terminal's line buffer until Enter,
+# so a redraw does not lose it. Ctrl+C asks again and a closed input ends the
+# question, as before.
 ask() {
+    local redraw="${2:-}" narrow now status
     ASKING="$1"
     printf '%s' "${ASKING}"
-    read -r
-    local status=$?
+    if [ -z "${redraw}" ] || [ ! -t 0 ]; then
+        read -r
+        status=$?
+    else
+        # Compare with the layout actually drawn, not the width now
+        narrow="${NARROW_LAYOUT}"
+        [ -n "${narrow}" ] || { is_narrow && narrow=1 || narrow=0; }
+        INTERRUPTED=0
+        while :; do
+            read -r -t 1
+            status=$?
+            [ "${status}" -eq 0 ] && break
+            # Closed input: stop asking
+            [ "${status}" -le 128 ] && break
+            # Ctrl+C: the trap has already asked again; keep waiting, as the
+            # plain read does
+            if [ "${INTERRUPTED}" = 1 ]; then
+                INTERRUPTED=0
+                continue
+            fi
+            is_narrow && now=1 || now=0
+            if [ "${now}" != "${narrow}" ]; then
+                "${redraw}"
+                narrow="${NARROW_LAYOUT:-${now}}"
+                printf '%s' "${ASKING}"
+            fi
+        done
+    fi
     ASKING=""
     return ${status}
 }
@@ -92,6 +155,21 @@ run_codex() {
 header() {
     reset_terminal
     clear
+    if [ "${NARROW_LAYOUT}" = 1 ]; then
+        echo "${C_TITLE}  Codex Pro${C_OFF}"
+        echo "${C_DIM}  ------------------------------${C_OFF}"
+        if is_signed_in; then
+            echo "  Account: ${C_OK}signed in${C_OFF}"
+        else
+            echo "  Account: ${C_WARN}not signed in - choose 4${C_OFF}"
+        fi
+        echo "  Codex:   $(codex --version 2>/dev/null || echo 'not available')"
+        echo "  Folder:  ${WORKDIR} (= /config)"
+        echo "${C_DIM}  Keeps running when you close"
+        echo "  the tab. Come back any time.${C_OFF}"
+        echo
+        return 0
+    fi
     echo "${C_TITLE}  Codex Pro for Home Assistant${C_OFF}"
     echo "${C_DIM}  ------------------------------------------------------------${C_OFF}"
     if is_signed_in; then
@@ -108,6 +186,57 @@ header() {
 
 show_help() {
     clear
+    if is_narrow; then
+        cat <<'EOF'
+  What is this?
+  ------------------------------
+  OpenAI Codex with access to
+  your Home Assistant files. Say
+  what you want in plain words,
+  Codex reads and edits files.
+
+  Things you can ask it:
+   "turn the porch light on at
+    sunset"
+   "why does my heating
+    automation not trigger?"
+   "a dashboard view with all
+    temperature sensors"
+
+  Where your files are:
+   /config = /homeassistant
+     the Home Assistant folder
+   /addon_configs  other add-ons
+   /share, /media  shared
+   /addons         local add-ons
+   /data/uploads   files from 📎
+   /ssl, /backup   read-only
+
+  After Codex changes something:
+   ha-reload       apply YAML
+   ha-reload --restart
+                   after a
+                   dashboard change
+
+  Codex also talks to Home
+  Assistant directly with:
+   ha-api   REST API (entities)
+   ha-ws    WebSocket (dashboards)
+   mcp-update --check
+  Each shows examples with --help
+
+  The bar at the bottom shows
+  🏠 ✓ when all is well. Type
+  ha-status for the details.
+
+  Leaving: close the tab any
+  time, nothing is lost. Ctrl-C
+  stops Codex and shows this
+  menu.
+EOF
+        pause
+        return 0
+    fi
     cat <<'EOF'
   What is this?
   ------------------------------------------------------------
@@ -150,10 +279,23 @@ EOF
     pause
 }
 
-first_run_hint() {
-    is_signed_in && return 0
+welcome_screen() {
+    pick_layout
     clear
-    cat <<EOF
+    if [ "${NARROW_LAYOUT}" = 1 ]; then
+        cat <<EOF
+  ${C_TITLE}Welcome to Codex Pro${C_OFF}
+
+  Sign in once before Codex can
+  do anything. It takes a minute
+  and is kept across restarts
+  and updates of this add-on.
+
+  Press Enter to sign in, or
+  type 'skip' to see the menu.
+EOF
+    else
+        cat <<EOF
   ${C_TITLE}Welcome to Codex Pro${C_OFF}
 
   You need to sign in once before Codex can do anything. It takes a
@@ -162,10 +304,16 @@ first_run_hint() {
 
   Press Enter to start the sign-in, or type 'skip' to see the menu first.
 EOF
+    fi
     printf '\n'
+}
+
+first_run_hint() {
+    is_signed_in && return 0
+    welcome_screen
     # A closed input: show the menu rather than start the sign-in
     local answer
-    ask "  > " && answer="${REPLY}" || answer="skip"
+    ask "  > " welcome_screen && answer="${REPLY}" || answer="skip"
     case "${answer}" in
         skip|s|S) return 0 ;;
         *) codex-login ;;
@@ -184,9 +332,23 @@ else
     first_run_hint
 fi
 
-while true; do
+main_menu() {
+    pick_layout
     header
-    cat <<EOF
+    if [ "${NARROW_LAYOUT}" = 1 ]; then
+        cat <<EOF
+  1) New Codex session
+  2) Continue my last session
+  3) Pick an earlier session
+  4) Sign in / switch account
+  5) Update Codex
+  6) Apply my HA changes
+  7) Plain shell
+  8) What can I do here?
+  9) Self-check (if odd)
+EOF
+    else
+        cat <<EOF
     1) Start a new Codex session
     2) Continue where I left off (last session)
     3) Pick one of my earlier sessions
@@ -197,8 +359,13 @@ while true; do
     8) What can I do here?
     9) Self-check (run this if something behaves oddly)
 EOF
+    fi
     printf '\n'
-    ask "  Type a number and press Enter: " && choice="${REPLY}" || choice=""
+}
+
+while true; do
+    main_menu
+    ask "  Type a number and press Enter: " main_menu && choice="${REPLY}" || choice=""
 
     case "${choice}" in
         1) clear; run_codex ;;
@@ -240,7 +407,8 @@ EOF
         *)
             echo
             echo "  ${C_WARN}'${choice}' is not one of the options.${C_OFF}"
-            echo "  Type one of the numbers shown above (for example 1) and press Enter."
+            echo "  Type one of the numbers above"
+            echo "  (for example 1) and press Enter."
             sleep 2
             ;;
     esac

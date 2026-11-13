@@ -101,7 +101,8 @@ ensure_venv() {
     fi
     say "Setting up persistent Python storage (first time only)..."
     mkdir -p "${PERSIST_PYTHON}"
-    if python3 -m venv "${VENV}"; then
+    # -I: never import a module from the current folder (often /homeassistant)
+    if python3 -I -m venv "${VENV}"; then
         return 0
     fi
     line

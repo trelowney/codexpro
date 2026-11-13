@@ -87,7 +87,9 @@ install_python_packages() {
     if [ ! -x "${PERSIST_PYTHON}/venv/bin/python" ]; then
         echo "Setting up the Python environment (first time only)..."
         mkdir -p "${PERSIST_PYTHON}"
-        if ! python3 -m venv "${PERSIST_PYTHON}/venv"; then
+        # -I: the terminal starts in /homeassistant, and Python would otherwise
+        # import a planted module (venv.py) from the current folder first
+        if ! python3 -I -m venv "${PERSIST_PYTHON}/venv"; then
             echo "Could not create the Python environment."
             echo "What to do: run 'persist-install python3 py3-pip' first, then try again."
             return 1

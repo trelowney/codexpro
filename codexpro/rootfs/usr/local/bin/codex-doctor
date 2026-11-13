@@ -72,7 +72,7 @@ fi
 
 # 5. Codex configuration
 if [ -f "${CODEX_HOME}/config.toml" ]; then
-    if python3 -c "import tomllib,sys;tomllib.load(open(sys.argv[1],'rb'))" "${CODEX_HOME}/config.toml" 2>/dev/null; then
+    if python3 -I -c "import tomllib,sys;tomllib.load(open(sys.argv[1],'rb'))" "${CODEX_HOME}/config.toml" 2>/dev/null; then
         ok "Codex configuration file is valid"
         sandbox="$(grep -E '^sandbox_mode' "${CODEX_HOME}/config.toml" | head -n1 | cut -d'"' -f2)"
         [ -n "${sandbox}" ] && ok "File access mode: ${sandbox}"

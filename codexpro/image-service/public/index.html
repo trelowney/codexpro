@@ -1406,6 +1406,12 @@
 
         // Helper to copy text to clipboard
         async function copyToClipboard(text) {
+            // Strip control bytes: a file name in /config can carry them (see
+            // sanitizeForClipboard in terminal-clipboard.js)
+            if (window.CodexTerminalClipboard) {
+                text = CodexTerminalClipboard.sanitizeForClipboard(text);
+            }
+            if (!text) return false;
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 try {
                     await navigator.clipboard.writeText(text);

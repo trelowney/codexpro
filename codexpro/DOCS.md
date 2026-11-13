@@ -198,6 +198,8 @@ missing, the window says what to do.
   sending) and **↵** (send). Two Ctrl+C in a row quit Codex, and a double tap
   is easy on a phone, so after one tap the ^C key shows *wait* for two seconds.
   The row is hidden on computers and on tablets with a trackpad.
+- **The menu fits a phone:** on a narrow screen it shows shorter lines, and it
+  switches when you turn the phone. The option numbers stay the same.
 - **Your own tmux settings** go in `/data/home/.tmux.local.conf`.
   `/data/home/.tmux.conf` is rewritten on every start, so changes there are
   lost; the local file is read last, so its settings win. Restart the add-on
@@ -277,6 +279,11 @@ in `/data/home/.tmux.local.conf` still win, including your own `status-right`.
 
 Over plain `http://` some browsers refuse automatic copying; the 📋 button
 still works there because it is a click.
+
+Copied text never carries control characters (an escape or a carriage
+return), whether it comes from a program, a selection or **Copy path**, so
+pasting it back cannot run anything by itself. Tabs and line breaks stay.
+Programs in the terminal can put text on your clipboard, but cannot read it.
 
 ## Files sidebar
 
